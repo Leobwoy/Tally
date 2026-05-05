@@ -1,0 +1,133 @@
+/* ─── RESET & BASE ──────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent; /* Remove tap flash on mobile */
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: "Georgia", "Times New Roman", serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100vh;
+  /* Smooth color transitions when switching themes */
+  transition: background 0.25s ease, color 0.25s ease;
+  overscroll-behavior: none; /* Prevent pull-to-refresh on mobile */
+}
+
+/* Prevent horizontal overflow on mobile */
+#root {
+  max-width: 430px;
+  margin: 0 auto;
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* ─── CSS VARIABLES (THEME TOKENS) ─────────────────────────────────────────── */
+/* Default theme: Sunrise (light). Overridden by ThemeProvider via data attributes. */
+:root {
+  --color-primary:    #E8845A;
+  --color-accent:     #C85A2A;
+  --color-soft:       #F5C4A1;
+  --color-bg:         #FFF8F3;
+  --color-card:       #FFF0E6;
+  --color-border:     #F0D5C0;
+  --color-text:       #3D1F0A;
+  --color-subtext:    #9A6A4A;
+  --color-nav:        #FFF0E6;
+
+  /* Semantic tokens */
+  --color-danger:     #E55;
+  --color-success:    #3B6D11;
+  --color-white:      #FFFFFF;
+
+  /* Spacing scale */
+  --space-xs:  4px;
+  --space-sm:  8px;
+  --space-md:  14px;
+  --space-lg:  20px;
+  --space-xl:  28px;
+
+  /* Border radius scale */
+  --radius-sm:  8px;
+  --radius-md:  12px;
+  --radius-lg:  16px;
+  --radius-xl:  22px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-card: 0 2px 12px rgba(0,0,0,0.06);
+  --shadow-fab:  0 8px 24px rgba(232, 132, 90, 0.4);
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-med:  0.25s ease;
+
+  /* Bottom nav height — used for page bottom padding */
+  --nav-height: 68px;
+
+  /* Safe area insets for iPhone notch / home bar */
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ─── SCROLLBAR ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 0; background: transparent; }
+
+/* ─── TYPOGRAPHY HELPERS ────────────────────────────────────────────────────── */
+.label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--color-subtext);
+  font-family: "Georgia", serif;
+  text-transform: uppercase;
+}
+
+/* ─── INPUT RESET ───────────────────────────────────────────────────────────── */
+input, textarea, select, button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  outline: none;
+  border: none;
+  background: none;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.5;
+  cursor: pointer;
+}
+
+button { cursor: pointer; }
+
+/* ─── TRANSITIONS ───────────────────────────────────────────────────────────── */
+/* All interactive elements get a subtle press effect */
+button:active, [role="button"]:active {
+  transform: scale(0.97);
+  transition: transform 0.1s ease;
+}
+
+/* ─── PAGE WRAPPER ──────────────────────────────────────────────────────────── */
+/* Every screen uses this — adds bottom padding so content clears the nav bar */
+.page {
+  padding: var(--space-lg) var(--space-lg) 0;
+  padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + var(--space-lg));
+  min-height: 100vh;
+  background: var(--color-bg);
+}
+
+/* Onboarding has no nav, so it gets its own layout */
+.page--onboarding {
+  padding: var(--space-xl) var(--space-lg);
+  min-height: 100vh;
+  background: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}

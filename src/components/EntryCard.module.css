@@ -1,0 +1,87 @@
+/* EntryCard.module.css */
+
+.card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 13px 15px;
+  margin-bottom: 10px;
+  transition: background var(--transition-med), border-color var(--transition-med);
+}
+
+.body {
+  flex: 1;
+  min-width: 0; /* Allow text to truncate */
+}
+
+.date {
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--color-text);
+  margin-bottom: 3px;
+}
+
+.studies {
+  font-size: 11px;
+  color: var(--color-subtext);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notes {
+  font-size: 10px;
+  color: var(--color-subtext);
+  font-style: italic;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-left: 10px;
+}
+
+.hours {
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--color-primary);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.editBtn,
+.deleteBtn {
+  font-size: 9px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid;
+  background: none;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.editBtn {
+  color: var(--color-subtext);
+  border-color: var(--color-border);
+}
+
+.deleteBtn {
+  color: #e55;
+  border-color: #ffaaaa;
+}
+
+.editBtn:active,
+.deleteBtn:active { opacity: 0.6; }

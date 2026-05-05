@@ -1,0 +1,181 @@
+/* Settings.module.css */
+
+.page { padding-top: 22px; }
+
+.title {
+  font-size: 22px;
+  font-weight: bold;
+  color: var(--color-text);
+  margin-bottom: 24px;
+}
+
+.card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  padding: 16px;
+  transition: background var(--transition-med), border-color var(--transition-med);
+}
+
+.divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 14px 0;
+}
+
+/* Profile */
+.nameRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nameValue {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--color-text);
+  margin-top: 3px;
+}
+
+.editBtn {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--color-subtext);
+  cursor: pointer;
+}
+
+.nameEdit {
+  display: flex;
+  gap: 8px;
+}
+
+.nameInput {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--color-primary);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 15px;
+  font-family: "Georgia", serif;
+}
+
+.saveNameBtn {
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+/* Dark mode toggle */
+.toggleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.toggleLabel {
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.toggle {
+  width: 48px;
+  height: 26px;
+  border-radius: 13px;
+  border: none;
+  position: relative;
+  cursor: pointer;
+  transition: background var(--transition-med);
+}
+
+.toggleThumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: #fff;
+  position: absolute;
+  top: 3px;
+  transition: left var(--transition-med);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
+.subLabel {
+  font-size: 13px;
+  color: var(--color-text);
+  margin-bottom: 12px;
+}
+
+/* Data rows */
+.dataRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.dataIcon {
+  font-size: 20px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.dataTitle {
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--color-text);
+  margin-bottom: 3px;
+}
+
+.dataDesc {
+  font-size: 11px;
+  color: var(--color-subtext);
+  line-height: 1.5;
+}
+
+.statusBadge {
+  margin-left: auto;
+  font-size: 11px;
+  color: #3B6D11;
+  background: #EAF3DE;
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.dangerBtn {
+  width: 100%;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid #ffaaaa;
+  background: transparent;
+  color: #e55;
+  font-size: 14px;
+  font-family: "Georgia", serif;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.dangerBtn:active { background: #fff0f0; }
+
+/* Version footer */
+.version {
+  text-align: center;
+  font-size: 11px;
+  color: var(--color-subtext);
+  line-height: 2;
+  white-space: pre-line;
+  padding-bottom: 8px;
+}
+
+.version span {
+  font-size: 10px;
+  opacity: 0.6;
+}
