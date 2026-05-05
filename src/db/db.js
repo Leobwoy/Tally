@@ -78,10 +78,23 @@ export default db;
  * @returns {Promise<{name:string, theme:string, dark:boolean, awsUserId:string|null}>}
  */
 export async function loadPreferences() {
-  const prefs = await db.preferences.get("user");
-  return prefs ?? { id: "user", name: "", theme: "sunrise", dark: false, awsUserId: null };
+  try {
+    if (!db.isOpen()) await db.open();
+    const prefs = await db.preferences.get("user");
+    return prefs ?? { id: "user", name: "", theme: "sunrise", dark: false, awsUserId: null };
+  } catch (err) {
+    console.warn("[Tally] DB error, retrying after delete:", err.name);
+    try {
+      await db.delete();
+      await db.open();
+      const prefs = await db.preferences.get("user");
+      return prefs ?? { id: "user", name: "", theme: "sunrise", dark: false, awsUserId: null };
+    } catch (retryErr) {
+      console.warn("[Tally] Retry failed, returning defaults:", retryErr.name);
+      return { id: "user", name: "", theme: "sunrise", dark: false, awsUserId: null };
+    }
+  }
 }
-
 /**
  * Save (merge) a partial preferences object.
  * Only the fields you pass in are updated — others are preserved.

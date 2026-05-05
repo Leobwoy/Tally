@@ -57,11 +57,19 @@ export default function App() {
 
   /* Load preferences from IndexedDB on first mount */
   useEffect(() => {
-    loadPreferences().then((p) => {
-      setPrefs(p);
-      applyTheme(p.theme, p.dark);
-      setReady(true);
-    });
+    loadPreferences()
+  .then((p) => {
+    setPrefs(p);
+    applyTheme(p.theme, p.dark);
+    setReady(true);
+  })
+  .catch((err) => {
+    console.warn("[Tally] loadPreferences failed completely, using defaults:", err);
+    const defaults = { id: "user", name: "", theme: "sunrise", dark: false, awsUserId: null };
+    setPrefs(defaults);
+    applyTheme(defaults.theme, defaults.dark);
+    setReady(true);
+  });
 
     /* Start listening for online events to trigger background sync */
     startSyncListener();
