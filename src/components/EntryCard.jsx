@@ -44,8 +44,10 @@ export default function EntryCard({ entry, onEdit, onDelete }) {
       </div>
 
       <div className={styles.right}>
-        {/* Hours badge */}
-        <div className={styles.hours}>{hours}h</div>
+        {/* Hours badge — hidden when zero (e.g. publishers) */}
+        {parseFloat(entry.hours) > 0 && (
+          <div className={styles.hours}>{hours}h</div>
+        )}
 
         {/* Action buttons */}
         <div className={styles.actions}>

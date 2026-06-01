@@ -17,6 +17,9 @@ import { Amplify } from "aws-amplify";
 import { loadPreferences, savePreferences } from "@/db/db";
 import { applyTheme } from "@/themes/themes";
 import { startSyncListener, triggerSync } from "@/sync/syncEngine";
+import { scheduleReminder } from "@/utils/reminderEngine";
+import { CURRENT_VERSION } from "@/utils/changelog";
+import WhatsNew from "@/components/WhatsNew";
 
 import BottomNav    from "@/components/BottomNav";
 import Onboarding   from "@/screens/Onboarding";
@@ -52,24 +55,33 @@ export const PrefsContext = React.createContext(null);
 
 /* ─── COMPONENT ─────────────────────────────────────────────────────────────── */
 export default function App() {
-  const [prefs, setPrefs]   = useState(null);  // null = still loading
-  const [ready, setReady]   = useState(false);
+  const [prefs, setPrefs]       = useState(null);  // null = still loading
+  const [ready, setReady]       = useState(false);
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
 
   /* Load preferences from IndexedDB on first mount */
   useEffect(() => {
     loadPreferences()
-  .then((p) => {
-    setPrefs(p);
-    applyTheme(p.theme, p.dark);
-    setReady(true);
-  })
-  .catch((err) => {
-    console.warn("[Tally] loadPreferences failed completely, using defaults:", err);
-    const defaults = { id: "user", name: "", theme: "sunrise", dark: false, awsUserId: null };
-    setPrefs(defaults);
-    applyTheme(defaults.theme, defaults.dark);
-    setReady(true);
-  });
+      .then((p) => {
+        setPrefs(p);
+        applyTheme(p.theme, p.dark);
+        setReady(true);
+
+        if (p.name && p.lastSeenVersion !== CURRENT_VERSION) {
+          setShowWhatsNew(true);
+        }
+
+        if (p.remindersEnabled === true) {
+          scheduleReminder(p.reminderHour ?? 18);
+        }
+      })
+      .catch((err) => {
+        console.warn("[Tally] loadPreferences failed completely, using defaults:", err);
+        const defaults = { id: "user", name: "", theme: "sunrise", dark: false, awsUserId: null };
+        setPrefs(defaults);
+        applyTheme(defaults.theme, defaults.dark);
+        setReady(true);
+      });
 
     /* Start listening for online events to trigger background sync */
     startSyncListener();
@@ -94,6 +106,12 @@ export default function App() {
     const next = { ...prefs, ...updates };
     setPrefs(next);
     await savePreferences(updates);
+  }
+
+  async function handleDismissWhatsNew() {
+    setShowWhatsNew(false);
+    await savePreferences({ lastSeenVersion: CURRENT_VERSION });
+    setPrefs((prev) => ({ ...prev, lastSeenVersion: CURRENT_VERSION }));
   }
 
   /* Blank screen while IndexedDB loads (usually < 50ms) */
@@ -123,6 +141,12 @@ export default function App() {
           </Routes>
           <BottomNav />
         </>
+      )}
+      {showWhatsNew && (
+        <WhatsNew
+          version={CURRENT_VERSION}
+          onDismiss={handleDismissWhatsNew}
+        />
       )}
     </PrefsContext.Provider>
   );

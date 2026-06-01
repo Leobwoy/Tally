@@ -46,12 +46,15 @@ function buildRows(entries) {
  * @param {string}   monthKey
  * @param {string}   userName
  * @param {string}   themeId
+ * @param {{status:"publisher"|"auxiliary"|"regular", goalHours:number}|null} monthStatus
  */
-export function exportPDF(entries, monthKey, userName, themeId) {
+export function exportPDF(entries, monthKey, userName, themeId, monthStatus) {
   const theme      = THEMES[themeId] ?? THEMES.sunrise;
   const monthLabel = formatMonthLabel(monthKey);
   const { totalHours, uniqueBS, daysOut } = computeTotals(entries);
-  const rows = buildRows(entries);
+  const isPublisher = monthStatus?.status === "publisher";
+  const goalHours = monthStatus?.goalHours ?? 0;
+  const rows = isPublisher ? buildRowsPublisher(entries) : buildRows(entries);
 
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const primaryRGB = hexToRGB(theme.primary);
@@ -72,11 +75,16 @@ export function exportPDF(entries, monthKey, userName, themeId) {
 
   // Summary row
   const summaryY = 44;
-  const summaries = [
-    { label: "Total Hours",   value: totalHours.toFixed(1) },
-    { label: "Bible Studies", value: String(uniqueBS.length) },
-    { label: "Days Out",      value: String(daysOut) },
-  ];
+  const summaries = isPublisher
+    ? [
+        { label: "Bible Studies", value: String(uniqueBS.length) },
+        { label: "Days Out", value: String(daysOut) },
+      ]
+    : [
+        { label: "Total Hours", value: totalHours.toFixed(1) },
+        { label: "Bible Studies", value: String(uniqueBS.length) },
+        { label: "Days Out", value: String(daysOut) },
+      ];
   summaries.forEach(({ label, value }, i) => {
     const x = 14 + i * 62;
     doc.setFillColor(...softRGB);
@@ -90,21 +98,42 @@ export function exportPDF(entries, monthKey, userName, themeId) {
     doc.text(label.toUpperCase(), x + 29, summaryY + 17, { align: "center" });
   });
 
+  if (!isPublisher && goalHours > 0) {
+    doc.setTextColor(...accentRGB);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Goal: ${goalHours}h`, 14, summaryY + 26);
+  }
+
   // Main table
   autoTable(doc, {
     startY: summaryY + 28,
-    head: [["Date", "Hours", "BS Count", "Bible Study Names"]],
+    head: [
+      isPublisher ? ["Date", "Bible Studies", "Names"] : ["Date", "Hours", "BS Count", "Bible Study Names"],
+    ],
     body: rows,
-    foot: [["TOTAL", `${totalHours.toFixed(1)}h`, String(uniqueBS.length), uniqueBS.join(", ") || "—"]],
+    foot: [
+      isPublisher
+        ? ["TOTAL", String(uniqueBS.length), uniqueBS.join(", ") || "—"]
+        : ["TOTAL", `${totalHours.toFixed(1)}h`, String(uniqueBS.length), uniqueBS.join(", ") || "—"],
+    ],
     headStyles: { fillColor: primaryRGB, textColor: [255,255,255], fontStyle: "bold", fontSize: 10 },
     footStyles: { fillColor: softRGB, textColor: accentRGB, fontStyle: "bold", fontSize: 10 },
     alternateRowStyles: { fillColor: [250,250,252] },
     styles: { fontSize: 10, cellPadding: 3 },
     columnStyles: {
-      0: { cellWidth: 35 },
-      1: { cellWidth: 20, halign: "center" },
-      2: { cellWidth: 20, halign: "center" },
-      3: { cellWidth: "auto" },
+      ...(isPublisher
+        ? {
+            0: { cellWidth: 35 },
+            1: { cellWidth: 28, halign: "center" },
+            2: { cellWidth: "auto" },
+          }
+        : {
+            0: { cellWidth: 35 },
+            1: { cellWidth: 20, halign: "center" },
+            2: { cellWidth: 20, halign: "center" },
+            3: { cellWidth: "auto" },
+          }),
     },
   });
 
@@ -130,14 +159,17 @@ export function exportPDF(entries, monthKey, userName, themeId) {
  * @param {string}   monthKey
  * @param {string}   userName
  * @param {string}   themeId
+ * @param {{status:"publisher"|"auxiliary"|"regular", goalHours:number}|null} monthStatus
  */
-export async function exportExcel(entries, monthKey, userName, themeId) {
+export async function exportExcel(entries, monthKey, userName, themeId, monthStatus) {
   const theme      = THEMES[themeId] ?? THEMES.sunrise;
   const monthLabel = formatMonthLabel(monthKey);
   const { totalHours, uniqueBS, daysOut } = computeTotals(entries);
   const primaryHex = theme.primary.replace("#", "FF");
   const softHex    = theme.soft.replace("#", "FF");
   const accentHex  = theme.accent.replace("#", "FF");
+  const isPublisher = monthStatus?.status === "publisher";
+  const goalHours = monthStatus?.goalHours ?? 0;
 
   const workbook  = new ExcelJS.Workbook();
   workbook.creator  = "Tally App";
@@ -146,21 +178,27 @@ export async function exportExcel(entries, monthKey, userName, themeId) {
   const sheet = workbook.addWorksheet(monthLabel);
 
   // ── Column definitions ──────────────────────────────────────
-  sheet.columns = [
-    { key: "date",   width: 18 },
-    { key: "hours",  width: 10 },
-    { key: "bs",     width: 14 },
-    { key: "names",  width: 42 },
-  ];
+  sheet.columns = isPublisher
+    ? [
+        { key: "date", width: 18 },
+        { key: "bs", width: 14 },
+        { key: "names", width: 50 },
+      ]
+    : [
+        { key: "date", width: 18 },
+        { key: "hours", width: 10 },
+        { key: "bs", width: 14 },
+        { key: "names", width: 42 },
+      ];
 
   // ── Title rows ──────────────────────────────────────────────
-  sheet.mergeCells("A1:D1");
+  sheet.mergeCells(isPublisher ? "A1:C1" : "A1:D1");
   const titleCell = sheet.getCell("A1");
   titleCell.value = "Tally — Field Service Report";
   titleCell.font  = { bold: true, size: 16, color: { argb: primaryHex } };
   titleCell.alignment = { horizontal: "left" };
 
-  sheet.mergeCells("A2:D2");
+  sheet.mergeCells(isPublisher ? "A2:C2" : "A2:D2");
   const subCell = sheet.getCell("A2");
   subCell.value = `${monthLabel} — ${userName}`;
   subCell.font  = { size: 11, color: { argb: accentHex } };
@@ -168,25 +206,35 @@ export async function exportExcel(entries, monthKey, userName, themeId) {
   sheet.addRow([]); // spacer
 
   // ── Summary row ─────────────────────────────────────────────
-  const summaryRow = sheet.addRow(["Total Hours", "Bible Studies", "Days Out", ""]);
+  const summaryRow = sheet.addRow(
+    isPublisher ? ["Bible Studies", "Days Out", ""] : ["Total Hours", "Bible Studies", "Days Out", ""]
+  );
   summaryRow.eachCell((cell) => {
     cell.font = { bold: true, size: 10, color: { argb: accentHex } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: softHex } };
     cell.alignment = { horizontal: "center" };
   });
 
-  const valuesRow = sheet.addRow([totalHours.toFixed(1), uniqueBS.length, daysOut, ""]);
+  const valuesRow = sheet.addRow(
+    isPublisher ? [uniqueBS.length, daysOut, ""] : [totalHours.toFixed(1), uniqueBS.length, daysOut, ""]
+  );
   valuesRow.eachCell((cell, col) => {
-    if (col <= 3) {
+    if (col <= (isPublisher ? 2 : 3)) {
       cell.font      = { bold: true, size: 14, color: { argb: primaryHex } };
       cell.alignment = { horizontal: "center" };
     }
   });
 
+  if (!isPublisher && goalHours > 0) {
+    sheet.addRow(["Goal", goalHours, "", ""]);
+  }
+
   sheet.addRow([]); // spacer
 
   // ── Table header ─────────────────────────────────────────────
-  const headerRow = sheet.addRow(["Date", "Hours", "Bible Studies", "Names"]);
+  const headerRow = sheet.addRow(
+    isPublisher ? ["Date", "Bible Studies", "Names"] : ["Date", "Hours", "Bible Studies", "Names"]
+  );
   headerRow.eachCell((cell) => {
     cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: primaryHex } };
@@ -197,28 +245,35 @@ export async function exportExcel(entries, monthKey, userName, themeId) {
   // ── Data rows ────────────────────────────────────────────────
   const sorted = [...entries].reverse();
   sorted.forEach((e, i) => {
-    const row = sheet.addRow([
-      formatReportDate(e.date),
-      `${parseFloat(e.hours).toFixed(1)}h`,
-      e.bibleStudies?.length ?? 0,
-      (e.bibleStudies ?? []).join(", ") || "—",
-    ]);
+    const row = sheet.addRow(
+      isPublisher
+        ? [
+            formatReportDate(e.date),
+            e.bibleStudies?.length ?? 0,
+            (e.bibleStudies ?? []).join(", ") || "—",
+          ]
+        : [
+            formatReportDate(e.date),
+            `${parseFloat(e.hours).toFixed(1)}h`,
+            e.bibleStudies?.length ?? 0,
+            (e.bibleStudies ?? []).join(", ") || "—",
+          ]
+    );
     if (i % 2 === 0) {
       row.eachCell((cell) => {
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF9F9F9" } };
       });
     }
     row.getCell(1).font = { bold: true };
-    row.getCell(2).font = { color: { argb: primaryHex }, bold: true };
+    if (!isPublisher) row.getCell(2).font = { color: { argb: primaryHex }, bold: true };
   });
 
   // ── Totals row ───────────────────────────────────────────────
-  const totalsRow = sheet.addRow([
-    "TOTAL",
-    `${totalHours.toFixed(1)}h`,
-    String(uniqueBS.length),
-    uniqueBS.join(", ") || "—",
-  ]);
+  const totalsRow = sheet.addRow(
+    isPublisher
+      ? ["TOTAL", String(uniqueBS.length), uniqueBS.join(", ") || "—"]
+      : ["TOTAL", `${totalHours.toFixed(1)}h`, String(uniqueBS.length), uniqueBS.join(", ") || "—"]
+  );
   totalsRow.eachCell((cell) => {
     cell.font = { bold: true, color: { argb: accentHex } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: softHex } };
@@ -252,4 +307,12 @@ function hexToRGB(hex) {
     parseInt(h.substring(2, 4), 16),
     parseInt(h.substring(4, 6), 16),
   ];
+}
+
+function buildRowsPublisher(entries) {
+  return [...entries].reverse().map((e) => [
+    formatReportDate(e.date),
+    String(e.bibleStudies?.length ?? 0),
+    (e.bibleStudies ?? []).join(", ") || "—",
+  ]);
 }

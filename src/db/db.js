@@ -65,6 +65,16 @@ db.version(1).stores({
    *   queuedAt   : number — epoch ms
    */
   syncQueue: "++id, entryId, queuedAt",
+
+  /**
+   * pioneerStatus — per-month pioneer status overrides
+   * Fields:
+   *   monthKey    : string — "YYYY-MM" (primary key)
+   *   status      : "publisher" | "auxiliary" | "regular"
+   *   goalHours   : number — auxiliary: 15–30, regular: 50, publisher: 0
+   *   isOverride  : boolean — true if manually set for this month
+   */
+  pioneerStatus: "&monthKey, status, goalHours",
 });
 
 export default db;
@@ -81,17 +91,54 @@ export async function loadPreferences() {
   try {
     if (!db.isOpen()) await db.open();
     const prefs = await db.preferences.get("user");
-    return prefs ?? { id: "user", name: "", theme: "sunrise", dark: false, awsUserId: null };
+    return (
+      prefs ?? {
+        id: "user",
+        name: "",
+        theme: "sunrise",
+        dark: false,
+        awsUserId: null,
+        defaultStatus: "publisher",
+        defaultGoalHours: 0,
+        remindersEnabled: false,
+        reminderHour: 18,
+        lastSeenVersion: "",
+      }
+    );
   } catch (err) {
     console.warn("[Tally] DB error, retrying after delete:", err.name);
     try {
       await db.delete();
       await db.open();
       const prefs = await db.preferences.get("user");
-      return prefs ?? { id: "user", name: "", theme: "sunrise", dark: false, awsUserId: null };
+      return (
+        prefs ?? {
+          id: "user",
+          name: "",
+          theme: "sunrise",
+          dark: false,
+          awsUserId: null,
+          defaultStatus: "publisher",
+          defaultGoalHours: 0,
+          remindersEnabled: false,
+          reminderHour: 18,
+          lastSeenVersion: "",
+        }
+      );
     } catch (retryErr) {
       console.warn("[Tally] Retry failed, returning defaults:", retryErr.name);
-      return { id: "user", name: "", theme: "sunrise", dark: false, awsUserId: null };
+      return {
+        id: "user",
+        name: "",
+        theme: "sunrise",
+        dark: false,
+        awsUserId: null,
+        defaultStatus: "publisher",
+        defaultGoalHours: 0,
+        remindersEnabled: false,
+        reminderHour: 18,
+        lastSeenVersion: "",
+      };
     }
   }
 }
@@ -176,4 +223,47 @@ export async function searchContacts(query) {
     .map((c) => c.name)
     .filter((name) => name.toLowerCase().includes(lower))
     .sort();
+}
+
+/* ─── PIONEER STATUS HELPERS ────────────────────────────────────────────────── */
+
+/**
+ * Get the pioneer status settings for a specific month.
+ * If there is no override, returns the default preference-based status.
+ *
+ * @param {string} monthKey — "YYYY-MM"
+ * @returns {Promise<{monthKey:string, status:"publisher"|"auxiliary"|"regular", goalHours:number, isOverride:boolean}>}
+ */
+export async function getStatusForMonth(monthKey) {
+  const row = await db.pioneerStatus.get(monthKey);
+  if (row) return row;
+
+  const prefs = await loadPreferences();
+  return {
+    monthKey,
+    status: prefs.defaultStatus ?? "publisher",
+    goalHours: prefs.defaultGoalHours ?? 0,
+    isOverride: false,
+  };
+}
+
+/**
+ * Set a month-specific status override.
+ *
+ * @param {string} monthKey
+ * @param {"publisher"|"auxiliary"|"regular"} status
+ * @param {number} goalHours
+ */
+export async function setStatusForMonth(monthKey, status, goalHours) {
+  await db.pioneerStatus.put({ monthKey, status, goalHours, isOverride: true });
+}
+
+/**
+ * Set the default (inherited) status used when a month has no override.
+ *
+ * @param {"publisher"|"auxiliary"|"regular"} status
+ * @param {number} goalHours
+ */
+export async function setDefaultStatus(status, goalHours) {
+  await savePreferences({ defaultStatus: status, defaultGoalHours: goalHours });
 }

@@ -3,10 +3,10 @@
  * Monthly report screen — table of entries, totals, and export buttons.
  */
 
-import React, { useContext, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { PrefsContext } from "@/App";
-import db from "@/db/db";
+import db, { getStatusForMonth } from "@/db/db";
 import { exportPDF, exportExcel } from "@/utils/exportHelpers";
 import {
   currentMonthKey, prevMonthKey, nextMonthKey,
@@ -17,6 +17,11 @@ import styles from "./Monthly.module.css";
 export default function Monthly() {
   const { prefs } = useContext(PrefsContext);
   const [monthKey, setMonthKey] = useState(currentMonthKey);
+  const [monthStatus, setMonthStatus] = useState(null);
+
+  useEffect(() => {
+    getStatusForMonth(monthKey).then((s) => setMonthStatus(s));
+  }, [monthKey]);
 
   const entries = useLiveQuery(
     () => db.entries.where("monthKey").equals(monthKey).sortBy("date"),
@@ -31,6 +36,10 @@ export default function Monthly() {
   const uniqueBS   = [...new Set(sorted.flatMap((e) => e.bibleStudies ?? []))];
   const monthLabel = formatMonthLabel(monthKey);
   const atCurrent  = isCurrentMonth(monthKey);
+  const isPublisher = monthStatus?.status === "publisher";
+  const goalHours = monthStatus?.goalHours ?? 0;
+  const remaining = !isPublisher ? Math.max(0, goalHours - totalHours) : 0;
+  const goalReached = !isPublisher && goalHours > 0 && totalHours >= goalHours;
 
   return (
     <main className={`page ${styles.page}`}>
@@ -55,10 +64,31 @@ export default function Monthly() {
 
       {/* Summary cards */}
       <div className={styles.summaryRow}>
-        <div className={`${styles.summaryCard} ${styles.summaryPrimary}`}>
-          <span className={styles.summaryValue}>{totalHours.toFixed(1)}</span>
-          <span className={styles.summaryLabel}>TOTAL HOURS</span>
-        </div>
+        {!isPublisher && (
+          <div className={`${styles.summaryCard} ${styles.summaryPrimary}`}>
+            <span className={styles.summaryValue}>{totalHours.toFixed(1)}</span>
+            <span className={styles.summaryLabel}>TOTAL HOURS</span>
+            {goalHours > 0 && (
+              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.9 }}>
+                {goalReached ? (
+                  <span
+                    style={{
+                      display: "inline-block",
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      background: "rgba(46, 204, 113, 0.18)",
+                      border: "1px solid rgba(46, 204, 113, 0.35)",
+                    }}
+                  >
+                    Goal reached ✓
+                  </span>
+                ) : (
+                  <span>{remaining.toFixed(1)}h remaining</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <div className={styles.summaryCard}>
           <span className={styles.summaryValue} style={{ color: "var(--color-primary)" }}>
             {uniqueBS.length}
@@ -85,8 +115,8 @@ export default function Monthly() {
             {/* Table header */}
             <div className={`${styles.tableRow} ${styles.tableHead}`}>
               <span>DATE</span>
-              <span>HRS</span>
               <span>BS</span>
+              {!isPublisher && <span>HRS</span>}
             </div>
 
             {sorted.map((entry, i) => (
@@ -101,16 +131,16 @@ export default function Monthly() {
                     <span className={styles.dateSub}>{entry.bibleStudies.join(", ")}</span>
                   )}
                 </div>
-                <span className={styles.hoursCell}>{parseFloat(entry.hours).toFixed(1)}h</span>
                 <span className={styles.bsCell}>{entry.bibleStudies?.length ?? 0}</span>
+                {!isPublisher && <span className={styles.hoursCell}>{parseFloat(entry.hours).toFixed(1)}h</span>}
               </div>
             ))}
 
             {/* Totals row */}
             <div className={`${styles.tableRow} ${styles.tableTotal}`}>
               <span>TOTAL</span>
-              <span>{totalHours.toFixed(1)}h</span>
               <span>{uniqueBS.length}</span>
+              {!isPublisher && <span>{totalHours.toFixed(1)}h</span>}
             </div>
           </div>
 
@@ -130,13 +160,13 @@ export default function Monthly() {
           <div className={styles.exportRow}>
             <button
               className={styles.exportPDF}
-              onClick={() => exportPDF(sorted, monthKey, prefs.name, prefs.theme)}
+              onClick={() => exportPDF(sorted, monthKey, prefs.name, prefs.theme, monthStatus)}
             >
               📄 Export PDF
             </button>
             <button
               className={styles.exportExcel}
-              onClick={() => exportExcel(sorted, monthKey, prefs.name, prefs.theme)}
+              onClick={() => exportExcel(sorted, monthKey, prefs.name, prefs.theme, monthStatus)}
             >
               📊 Export Excel
             </button>

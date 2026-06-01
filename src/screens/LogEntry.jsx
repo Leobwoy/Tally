@@ -8,7 +8,7 @@ import React, { useContext, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 
-import db, { saveEntry, addContacts } from "@/db/db";
+import db, { getStatusForMonth, saveEntry, addContacts } from "@/db/db";
 import { triggerSync } from "@/sync/syncEngine";
 import { todayISO, toMonthKey } from "@/utils/dateHelpers";
 import Timer from "@/components/Timer";
@@ -29,6 +29,8 @@ export default function LogEntry() {
   const [loading,      setLoading]      = useState(isEdit);
   const [error,        setError]        = useState("");
 
+  const [currentStatus, setCurrentStatus] = useState(null);
+
   /* Load existing entry when editing */
   useEffect(() => {
     if (!isEdit) return;
@@ -42,6 +44,13 @@ export default function LogEntry() {
     });
   }, [id, isEdit, navigate]);
 
+  useEffect(() => {
+    if (!date) return;
+    const [y, m] = date.split("-").map(Number);
+    const monthKey = toMonthKey(y, m - 1);
+    getStatusForMonth(monthKey).then((s) => setCurrentStatus(s));
+  }, [date]);
+
   function handleTimerUse(decimalHours) {
     setHours(String(decimalHours));
     setInputMode("manual"); // Switch to manual so user can see and adjust the value
@@ -49,8 +58,9 @@ export default function LogEntry() {
 
   async function handleSave() {
     /* Validate */
-    const parsedHours = parseFloat(hours);
-    if (!hours || isNaN(parsedHours) || parsedHours <= 0) {
+    const isPublisher = currentStatus?.status === "publisher";
+    const parsedHours = isPublisher ? 0 : parseFloat(hours);
+    if (!isPublisher && (!hours || isNaN(parsedHours) || parsedHours <= 0)) {
       setError("Please enter a valid number of hours greater than 0.");
       return;
     }
@@ -86,6 +96,8 @@ export default function LogEntry() {
 
   if (loading) return null;
 
+  const isPublisher = currentStatus?.status === "publisher";
+
   return (
     <main className={`page ${styles.page}`}>
       {/* Back + title */}
@@ -109,49 +121,57 @@ export default function LogEntry() {
         />
       </div>
 
-      {/* Hours */}
-      <div className={styles.field}>
-        <p className="label">Hours</p>
-        <div className={styles.card}>
-          {/* Mode toggle */}
-          <div className={styles.modeToggle}>
-            {["manual", "timer"].map((mode) => (
-              <button
-                key={mode}
-                className={`${styles.modeBtn} ${inputMode === mode ? styles.modeBtnActive : ""}`}
-                onClick={() => setInputMode(mode)}
-              >
-                {mode === "manual" ? "✏️ Manual" : "⏱ Timer"}
-              </button>
-            ))}
-          </div>
-
-          {inputMode === "manual" ? (
-            <div className={styles.manualWrap}>
-              <input
-                type="number"
-                value={hours}
-                onChange={(e) => setHours(e.target.value)}
-                placeholder="e.g. 2.5"
-                min="0.01"
-                step="0.25"
-                className={styles.hoursInput}
-                inputMode="decimal"
-              />
-              <p className={styles.hoursHint}>Enter hours as a decimal (e.g. 1.5 = 1h 30min)</p>
+      {/* Hours (hidden for publishers) */}
+      {!isPublisher && (
+        <div className={styles.field}>
+          <p className="label">Hours</p>
+          <div className={styles.card}>
+            {/* Mode toggle */}
+            <div className={styles.modeToggle}>
+              {["manual", "timer"].map((mode) => (
+                <button
+                  key={mode}
+                  className={`${styles.modeBtn} ${inputMode === mode ? styles.modeBtnActive : ""}`}
+                  onClick={() => setInputMode(mode)}
+                >
+                  {mode === "manual" ? "✏️ Manual" : "⏱ Timer"}
+                </button>
+              ))}
             </div>
-          ) : (
-            <Timer onUse={handleTimerUse} />
-          )}
 
-          {/* Show saved value from timer */}
-          {inputMode === "manual" && hours && parseFloat(hours) > 0 && (
-            <p className={styles.savedHours}>
-              ✓ {parseFloat(hours).toFixed(2)} hours
-            </p>
-          )}
+            {inputMode === "manual" ? (
+              <div className={styles.manualWrap}>
+                <input
+                  type="number"
+                  value={hours}
+                  onChange={(e) => setHours(e.target.value)}
+                  placeholder="e.g. 2.5"
+                  min="0.01"
+                  step="0.25"
+                  className={styles.hoursInput}
+                  inputMode="decimal"
+                />
+                <p className={styles.hoursHint}>Enter hours as a decimal (e.g. 1.5 = 1h 30min)</p>
+                {currentStatus?.status === "regular" && (
+                  <p className={styles.hoursHint}>Regular pioneers report 50h/month</p>
+                )}
+                {currentStatus?.status === "auxiliary" && (
+                  <p className={styles.hoursHint}>Auxiliary pioneers report {currentStatus.goalHours}h this month</p>
+                )}
+              </div>
+            ) : (
+              <Timer onUse={handleTimerUse} />
+            )}
+
+            {/* Show saved value from timer */}
+            {inputMode === "manual" && hours && parseFloat(hours) > 0 && (
+              <p className={styles.savedHours}>
+                ✓ {parseFloat(hours).toFixed(2)} hours
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Bible studies */}
       <div className={styles.field}>

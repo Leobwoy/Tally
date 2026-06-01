@@ -3,10 +3,13 @@
  * User preferences screen — name, theme, dark mode, data management.
  */
 
-import React, { useContext, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import { PrefsContext } from "@/App";
 import ThemePicker from "@/components/ThemePicker";
-import db from "@/db/db";
+import db, { getStatusForMonth, setDefaultStatus, setStatusForMonth } from "@/db/db";
+import { currentMonthKey, formatMonthLabel } from "@/utils/dateHelpers";
+import { requestNotificationPermission, scheduleReminder, cancelReminder } from "@/utils/reminderEngine";
+import { CURRENT_VERSION, CHANGELOG } from "@/utils/changelog";
 import styles from "./Settings.module.css";
 
 export default function Settings() {
@@ -14,6 +17,51 @@ export default function Settings() {
 
   const [editingName, setEditingName] = useState(false);
   const [nameVal,     setNameVal]     = useState(prefs.name);
+
+  const [defaultStatus, setDefaultStatusUI] = useState(prefs.defaultStatus ?? "publisher");
+  const [defaultGoalHours, setDefaultGoalHoursUI] = useState(prefs.defaultGoalHours ?? 0);
+
+  const [thisMonthStatus, setThisMonthStatus] = useState(null);
+  const [showMonthOverride, setShowMonthOverride] = useState(false);
+  const [overrideStatus, setOverrideStatus] = useState("publisher");
+  const [overrideGoalHours, setOverrideGoalHours] = useState(0);
+  const [alsoSetDefault, setAlsoSetDefault] = useState(false);
+
+  const [remindersEnabled, setRemindersEnabled] = useState(!!prefs.remindersEnabled);
+  const [reminderHour, setReminderHour] = useState(prefs.reminderHour ?? 18);
+  const [reminderError, setReminderError] = useState("");
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+
+  const monthKey = useMemo(() => currentMonthKey(), []);
+  const monthLabel = useMemo(() => formatMonthLabel(monthKey), [monthKey]);
+
+  useEffect(() => {
+    setDefaultStatusUI(prefs.defaultStatus ?? "publisher");
+    setDefaultGoalHoursUI(prefs.defaultGoalHours ?? 0);
+    setRemindersEnabled(!!prefs.remindersEnabled);
+    setReminderHour(prefs.reminderHour ?? 18);
+  }, [prefs.defaultStatus, prefs.defaultGoalHours, prefs.remindersEnabled, prefs.reminderHour]);
+
+  useEffect(() => {
+    getStatusForMonth(monthKey).then((s) => {
+      setThisMonthStatus(s);
+      setOverrideStatus(s.status);
+      setOverrideGoalHours(s.goalHours);
+    });
+  }, [monthKey]);
+
+  useEffect(() => {
+    if (!prefs) return;
+    if (defaultStatus === "publisher") {
+      if (defaultGoalHours !== 0) setDefaultGoalHoursUI(0);
+      setDefaultStatus("publisher", 0);
+      updatePrefs({ defaultStatus: "publisher", defaultGoalHours: 0 });
+      return;
+    }
+
+    setDefaultStatus(defaultStatus, defaultGoalHours);
+    updatePrefs({ defaultStatus, defaultGoalHours });
+  }, [defaultStatus, defaultGoalHours]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function saveName() {
     const trimmed = nameVal.trim();
@@ -27,15 +75,92 @@ export default function Settings() {
     );
     if (!confirmed) return;
 
-    await db.transaction("rw", db.entries, db.contacts, db.syncQueue, async () => {
+    await db.transaction("rw", db.entries, db.contacts, db.syncQueue, db.pioneerStatus, async () => {
       await db.entries.clear();
       await db.contacts.clear();
       await db.syncQueue.clear();
+      await db.pioneerStatus.clear();
     });
   }
 
+  function StatusCard({ title, desc, selected, onClick }) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={styles.card}
+        style={{
+          textAlign: "left",
+          width: "100%",
+          marginBottom: 10,
+          border: selected ? "1px solid var(--color-primary)" : "1px solid var(--color-border)",
+          boxShadow: selected ? "0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent)" : "none",
+        }}
+        aria-pressed={selected}
+      >
+        <p className="label" style={{ marginBottom: 6 }}>{title}</p>
+        <p style={{ margin: 0, opacity: 0.9 }}>{desc}</p>
+      </button>
+    );
+  }
+
+  function statusBadge(status) {
+    const base = {
+      display: "inline-block",
+      padding: "4px 10px",
+      borderRadius: 999,
+      fontSize: 12,
+      border: "1px solid var(--color-border)",
+      background: "var(--color-bg)",
+    };
+    if (status === "regular") return { ...base, background: "rgba(46, 204, 113, 0.18)", borderColor: "rgba(46, 204, 113, 0.35)" };
+    if (status === "auxiliary") return { ...base, background: "rgba(52, 152, 219, 0.18)", borderColor: "rgba(52, 152, 219, 0.35)" };
+    return { ...base, background: "rgba(160, 160, 160, 0.12)", borderColor: "rgba(160, 160, 160, 0.25)" };
+  }
+
+  const reminderHourOptions = useMemo(
+    () => Array.from({ length: 16 }, (_, i) => i + 6), // 6..21
+    []
+  );
+
   return (
     <main className={`page ${styles.page}`}>
+      {showVersionHistory ? (
+        <>
+          <button
+            type="button"
+            className={styles.backBtn}
+            onClick={() => setShowVersionHistory(false)}
+          >
+            ← Back
+          </button>
+          <h1 className={styles.historyTitle}>Version History</h1>
+
+          {CHANGELOG.map((entry, i) => (
+            <div key={entry.version}>
+              <div className={styles.aboutRow}>
+                <span style={{ fontSize: 13, fontWeight: "bold", color: "var(--color-primary)" }}>
+                  v{entry.version}
+                </span>
+                <span style={{ fontSize: 11, color: "var(--color-subtext)" }}>{entry.date}</span>
+              </div>
+              <p style={{ fontSize: 15, fontWeight: "bold", color: "var(--color-text)", marginBottom: 8 }}>
+                {entry.title}
+              </p>
+              {entry.features.map((feature) => (
+                <p
+                  key={feature}
+                  style={{ fontSize: 12, color: "var(--color-subtext)", padding: "3px 0", lineHeight: 1.5 }}
+                >
+                  · {feature}
+                </p>
+              ))}
+              {i < CHANGELOG.length - 1 && <div className={styles.divider} style={{ margin: "16px 0" }} />}
+            </div>
+          ))}
+        </>
+      ) : (
+        <>
       <h1 className={styles.title}>Settings</h1>
 
       {/* ── PROFILE ── */}
@@ -63,6 +188,154 @@ export default function Settings() {
               onClick={() => { setNameVal(prefs.name); setEditingName(true); }}
             >
               Edit
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── PIONEER STATUS ── */}
+      <p className="label" style={{ marginBottom: 10 }}>PIONEER STATUS</p>
+      <div className={styles.card} style={{ marginBottom: 22 }}>
+        <p className={styles.subLabel} style={{ marginBottom: 10 }}>Default Status</p>
+
+        <StatusCard
+          title="Publisher"
+          desc="No hour reporting required"
+          selected={defaultStatus === "publisher"}
+          onClick={() => { setDefaultStatusUI("publisher"); setDefaultGoalHoursUI(0); }}
+        />
+
+        <StatusCard
+          title="Auxiliary Pioneer"
+          desc="Report 15–30 hours per month"
+          selected={defaultStatus === "auxiliary"}
+          onClick={() => {
+            setDefaultStatusUI("auxiliary");
+            setDefaultGoalHoursUI(Math.min(30, Math.max(15, defaultGoalHours || 15)));
+          }}
+        />
+        {defaultStatus === "auxiliary" && (
+          <div style={{ marginBottom: 10 }}>
+            <p className="label" style={{ marginBottom: 8 }}>
+              Monthly goal: {defaultGoalHours} hours
+            </p>
+            <input
+              type="range"
+              min={15}
+              max={30}
+              step={1}
+              value={defaultGoalHours}
+              onChange={(e) => setDefaultGoalHoursUI(Number(e.target.value))}
+              style={{ width: "100%" }}
+              aria-label="Auxiliary monthly goal hours"
+            />
+          </div>
+        )}
+
+        <StatusCard
+          title="Regular Pioneer"
+          desc="Report 50 hours per month"
+          selected={defaultStatus === "regular"}
+          onClick={() => { setDefaultStatusUI("regular"); setDefaultGoalHoursUI(50); }}
+        />
+
+        <div className={styles.divider} />
+
+        <p className={styles.subLabel} style={{ marginBottom: 10 }}>This Month Override</p>
+        <p className="label" style={{ marginBottom: 6 }}>MONTH: {monthLabel}</p>
+        <p style={{ marginTop: 0, marginBottom: 10, opacity: 0.9 }}>
+          Your status this month{" "}
+          {thisMonthStatus?.status && (
+            <span style={statusBadge(thisMonthStatus.status)}>
+              {thisMonthStatus.status === "regular"
+                ? "Regular Pioneer"
+                : thisMonthStatus.status === "auxiliary"
+                  ? "Auxiliary Pioneer"
+                  : "Publisher"}
+            </span>
+          )}
+        </p>
+
+        {!showMonthOverride ? (
+          <button
+            className={styles.editBtn}
+            onClick={() => {
+              setAlsoSetDefault(false);
+              setShowMonthOverride(true);
+            }}
+            style={{ width: "100%" }}
+          >
+            Change this month's status
+          </button>
+        ) : (
+          <div>
+            <StatusCard
+              title="Publisher"
+              desc="No hour reporting required"
+              selected={overrideStatus === "publisher"}
+              onClick={() => { setOverrideStatus("publisher"); setOverrideGoalHours(0); }}
+            />
+
+            <StatusCard
+              title="Auxiliary Pioneer"
+              desc="Report 15–30 hours per month"
+              selected={overrideStatus === "auxiliary"}
+              onClick={() => {
+                setOverrideStatus("auxiliary");
+                setOverrideGoalHours(Math.min(30, Math.max(15, overrideGoalHours || 15)));
+              }}
+            />
+            {overrideStatus === "auxiliary" && (
+              <div style={{ marginBottom: 10 }}>
+                <p className="label" style={{ marginBottom: 8 }}>
+                  Monthly goal: {overrideGoalHours} hours
+                </p>
+                <input
+                  type="range"
+                  min={15}
+                  max={30}
+                  step={1}
+                  value={overrideGoalHours}
+                  onChange={(e) => setOverrideGoalHours(Number(e.target.value))}
+                  style={{ width: "100%" }}
+                  aria-label="This month auxiliary goal hours"
+                />
+              </div>
+            )}
+
+            <StatusCard
+              title="Regular Pioneer"
+              desc="Report 50 hours per month"
+              selected={overrideStatus === "regular"}
+              onClick={() => { setOverrideStatus("regular"); setOverrideGoalHours(50); }}
+            />
+
+            <label style={{ display: "flex", alignItems: "center", gap: 10, margin: "10px 0 12px" }}>
+              <input
+                type="checkbox"
+                checked={alsoSetDefault}
+                onChange={(e) => setAlsoSetDefault(e.target.checked)}
+              />
+              <span style={{ opacity: 0.9 }}>Also set as my default status</span>
+            </label>
+
+            <button
+              className={styles.saveNameBtn}
+              style={{ width: "100%" }}
+              onClick={async () => {
+                await setStatusForMonth(monthKey, overrideStatus, overrideGoalHours);
+                if (alsoSetDefault) {
+                  setDefaultStatusUI(overrideStatus);
+                  setDefaultGoalHoursUI(overrideStatus === "publisher" ? 0 : overrideGoalHours);
+                  await setDefaultStatus(overrideStatus, overrideStatus === "publisher" ? 0 : overrideGoalHours);
+                  await updatePrefs({ defaultStatus: overrideStatus, defaultGoalHours: overrideStatus === "publisher" ? 0 : overrideGoalHours });
+                }
+                const s = await getStatusForMonth(monthKey);
+                setThisMonthStatus(s);
+                setShowMonthOverride(false);
+              }}
+            >
+              Save for {monthLabel}
             </button>
           </div>
         )}
@@ -99,6 +372,70 @@ export default function Settings() {
         />
       </div>
 
+      {/* ── REMINDERS ── */}
+      <p className="label" style={{ marginBottom: 10 }}>REMINDERS</p>
+      <div className={styles.card} style={{ marginBottom: 22 }}>
+        <div className={styles.toggleRow}>
+          <span className={styles.toggleLabel}>🔔 Daily reminder</span>
+          <button
+            className={styles.toggle}
+            style={{ background: remindersEnabled ? "var(--color-primary)" : "var(--color-border)" }}
+            onClick={async () => {
+              setReminderError("");
+              if (remindersEnabled) {
+                setRemindersEnabled(false);
+                await updatePrefs({ remindersEnabled: false });
+                cancelReminder();
+                return;
+              }
+
+              const ok = await requestNotificationPermission();
+              if (!ok) {
+                setReminderError("Please allow notifications in your browser settings.");
+                setRemindersEnabled(false);
+                await updatePrefs({ remindersEnabled: false });
+                return;
+              }
+
+              scheduleReminder(reminderHour);
+              setRemindersEnabled(true);
+              await updatePrefs({ remindersEnabled: true, reminderHour });
+            }}
+            role="switch"
+            aria-checked={remindersEnabled}
+            aria-label="Toggle daily reminder"
+          >
+            <div className={styles.toggleThumb} style={{ left: remindersEnabled ? 25 : 3 }} />
+          </button>
+        </div>
+
+        {reminderError && <p className={styles.error} style={{ marginTop: 10 }}>{reminderError}</p>}
+
+        {remindersEnabled && (
+          <>
+            <div className={styles.divider} />
+            <p className={styles.subLabel} style={{ marginBottom: 10 }}>Reminder time</p>
+            <select
+              value={reminderHour}
+              onChange={async (e) => {
+                const hour = Number(e.target.value);
+                setReminderHour(hour);
+                scheduleReminder(hour);
+                await updatePrefs({ reminderHour: hour });
+              }}
+              className={styles.nameInput}
+              aria-label="Daily reminder time"
+            >
+              {reminderHourOptions.map((h) => (
+                <option key={h} value={h}>
+                  {new Date(2000, 0, 1, h, 0, 0).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
+      </div>
+
       {/* ── DATA & PRIVACY ── */}
       <p className="label" style={{ marginBottom: 10 }}>DATA & PRIVACY</p>
       <div className={styles.card} style={{ marginBottom: 22 }}>
@@ -132,11 +469,37 @@ export default function Settings() {
         </button>
       </div>
 
+      {/* ── ABOUT ── */}
+      <p className="label" style={{ marginBottom: 10 }}>ABOUT</p>
+      <div className={styles.card} style={{ marginBottom: 22 }}>
+        <div className={styles.aboutRow}>
+          <span style={{ fontSize: 13, color: "var(--color-text)" }}>Current version</span>
+          <span style={{ fontSize: 13, color: "var(--color-primary)", fontWeight: "bold" }}>
+            {CURRENT_VERSION}
+          </span>
+        </div>
+
+        <div className={styles.divider} />
+
+        <div
+          className={styles.aboutRowClickable}
+          onClick={() => setShowVersionHistory(true)}
+          onKeyDown={(e) => e.key === "Enter" && setShowVersionHistory(true)}
+          role="button"
+          tabIndex={0}
+        >
+          <span style={{ fontSize: 13, color: "var(--color-text)" }}>Version history</span>
+          <span style={{ fontSize: 18, color: "var(--color-subtext)" }}>›</span>
+        </div>
+      </div>
+
       {/* Version footer */}
       <p className={styles.version}>
-        ✦ TALLY v1.0 · Field Service Tracker{"\n"}
+        ✦ TALLY v{CURRENT_VERSION} · Field Service Tracker{"\n"}
         <span>Offline-first · AWS-backed · PWA</span>
       </p>
+        </>
+      )}
     </main>
   );
 }
