@@ -2,7 +2,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+// GitHub Pages project sites are served from /RepoName/ — set VITE_BASE_URL=/Tally/ when building for Pages
+const base = process.env.VITE_BASE_URL || "/";
+
 export default defineConfig({
+  base,
   plugins: [
     react(),
 

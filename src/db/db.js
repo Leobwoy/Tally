@@ -24,56 +24,22 @@ const db = new Dexie("TallyDB");
  *
  * Only indexed fields need to be listed — other fields are stored freely.
  */
-db.version(1).stores({
-  /**
-   * entries — one row per field service day
-   * Fields stored (not all indexed):
-   *   id         : string — UUID generated client-side
-   *   date       : string — ISO date "YYYY-MM-DD", used as unique key per user
-   *   hours      : number — total hours for the day
-   *   bibleStudies: string[] — array of contact names studied with that day
-   *   notes      : string — optional free-text note
-   *   monthKey   : string — "YYYY-MM", used to quickly fetch all entries for a month
-   *   synced     : boolean — false until successfully pushed to AWS
-   *   updatedAt  : number — epoch ms, used for conflict resolution during sync
-   */
+const STORE_SCHEMA = {
   entries: "&id, date, monthKey, synced",
-
-  /**
-   * contacts — known bible study names for autocomplete
-   * Fields:
-   *   name       : string — unique name (primary key)
-   */
   contacts: "&name",
-
-  /**
-   * preferences — single row, always id = "user"
-   * Fields:
-   *   id         : "user" (constant)
-   *   name       : string — user's display name
-   *   theme      : keyof THEMES — active color theme
-   *   dark       : boolean — dark mode on/off
-   *   awsUserId  : string|null — Cognito sub, set after login
-   */
   preferences: "&id",
-
-  /**
-   * syncQueue — entries that need to be pushed to AWS
-   * Fields:
-   *   entryId    : string — references entries.id
-   *   action     : "upsert" | "delete"
-   *   queuedAt   : number — epoch ms
-   */
   syncQueue: "++id, entryId, queuedAt",
+};
 
-  /**
-   * pioneerStatus — per-month pioneer status overrides
-   * Fields:
-   *   monthKey    : string — "YYYY-MM" (primary key)
-   *   status      : "publisher" | "auxiliary" | "regular"
-   *   goalHours   : number — auxiliary: 15–30, regular: 50, publisher: 0
-   *   isOverride  : boolean — true if manually set for this month
-   */
+/** v1.0 schema — existing installs created before v1.1 */
+db.version(1).stores(STORE_SCHEMA);
+
+/**
+ * v1.1 — adds pioneerStatus for monthly publisher/pioneer settings.
+ * Must bump version so Dexie migrates existing IndexedDB databases.
+ */
+db.version(2).stores({
+  ...STORE_SCHEMA,
   pioneerStatus: "&monthKey, status, goalHours",
 });
 
