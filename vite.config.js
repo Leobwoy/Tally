@@ -16,6 +16,7 @@ export default defineConfig({
       filename: "sw.js",
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        maximumFileSizeToCacheInBytes: 5000000,
       },
       includeAssets: ["icon.svg", "apple-touch-icon.png", "manifest.json"],
       manifest: {
