@@ -8,9 +8,23 @@
  * Never edit or remove old entries.
  */
 
-export const CURRENT_VERSION = "1.1.0";
+export const CURRENT_VERSION = "1.1.1";
 
 export const CHANGELOG = [
+  {
+    version: "1.1.1",
+    title: "Cloud Sync & New Features",
+    date: "July 2026",
+    features: [
+      "Your data now syncs securely to the cloud — access it from any device",
+      "New Contacts screen — track bible studies by stage",
+      "Notes Journal — browse all your ministry notes in one place",
+      "Dedicated Note Reader for reviewing past notes",
+      "Export PDF and Excel reports with a single tap",
+      "Daily reminder notifications so you never forget to log",
+      "Improved performance and offline reliability",
+    ],
+  },
   {
     version: "1.1.0",
     title: "Pioneer Status and Goals",

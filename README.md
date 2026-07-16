@@ -1,7 +1,7 @@
 # ✦ Tally — Field Service Hour Tracker
 
 A mobile-first PWA for tracking field service hours and bible studies.
-Offline-first, AWS-backed, installable from the browser.
+Offline-first, Firebase-backed, installable from the browser.
 
 ---
 
@@ -17,8 +17,7 @@ npm install
 ```bash
 cp .env.example .env
 ```
-Leave the `.env` values empty for now — the app works fully offline without AWS.
-Fill them in later when you set up AWS (see AWS Setup below).
+Fill in your Firebase project credentials (see [FIREBASE_SETUP.md](FIREBASE_SETUP.md) for details).
 
 ### 3. Run in development
 ```bash
@@ -38,30 +37,43 @@ npm run preview
 
 ```
 src/
-├── App.jsx                  # Root, routing, theme provider
-├── index.css                # Global styles + CSS variables
-├── main.jsx                 # Entry point, PWA registration
+├── App.jsx                       # Root, routing, auth state, theme provider
+├── index.css                     # Global styles + CSS variables
+├── main.jsx                      # Entry point, PWA registration
+├── sw.js                         # Service worker (reminders + precaching)
 ├── themes/
-│   └── themes.js            # Color themes + CSS variable injection
+│   └── themes.js                 # Color themes + CSS variable injection
 ├── db/
-│   └── db.js                # IndexedDB schema (Dexie.js)
-├── sync/
-│   └── syncEngine.js        # Offline-first AWS sync engine
+│   └── db.js                     # Device-only IndexedDB (Dexie) for preferences
+├── firebase/
+│   ├── config.js                 # Firebase App, Auth, Firestore init
+│   ├── auth.js                   # Firebase Auth helpers (login/signup/logout)
+│   └── firestore.js              # All Firestore CRUD + migration logic
+├── hooks/
+│   └── useFirestore.js           # React hooks wrapping onSnapshot subscriptions
 ├── screens/
-│   ├── Onboarding.jsx/.css  # First launch — name + theme
-│   ├── Home.jsx/.css        # Dashboard — monthly summary + entries
-│   ├── LogEntry.jsx/.css    # Create/edit a daily log entry
-│   ├── Monthly.jsx/.css     # Report view + PDF/Excel export
-│   └── Settings.jsx/.css    # Preferences — name, theme, dark mode
+│   ├── Login.jsx/.css            # Email/password login
+│   ├── Signup.jsx/.css           # Create account
+│   ├── Onboarding.jsx/.css       # Post-signup theme picker
+│   ├── Home.jsx/.css             # Dashboard — monthly summary + entries
+│   ├── LogEntry.jsx/.css         # Create/edit a daily log entry
+│   ├── Monthly.jsx/.css          # Report view + PDF/Excel export
+│   ├── Contacts.jsx/.css         # Contact list by stage
+│   ├── ContactDetail.jsx/.css    # Individual contact + interactions
+│   ├── NotesJournal.jsx/.css     # Browse all notes
+│   ├── NoteReader.jsx/.css       # Read-only notepad view
+│   └── Settings.jsx/.css         # Profile, pioneer status, appearance, reminders
 ├── components/
-│   ├── BottomNav.jsx/.css   # Persistent bottom navigation
-│   ├── EntryCard.jsx/.css   # Single entry display
-│   ├── Timer.jsx/.css       # Stopwatch for logging hours
-│   ├── BibleStudyInput.jsx  # Name input with autocomplete
-│   └── ThemePicker.jsx/.css # Theme selection grid
+│   ├── BottomNav.jsx/.css        # Persistent bottom navigation
+│   ├── EntryCard.jsx/.css        # Single entry display card
+│   ├── Timer.jsx/.css            # Stopwatch for logging hours
+│   ├── WhatsNew.jsx/.css         # Version update modal
+│   └── ThemePicker.jsx/.css      # Theme selection grid
 └── utils/
-    ├── dateHelpers.js       # Date formatting and month navigation
-    └── exportHelpers.js     # PDF (jsPDF) and Excel (SheetJS) export
+    ├── dateHelpers.js            # Date formatting and month navigation
+    ├── exportHelpers.js          # PDF (jsPDF) and Excel (ExcelJS) export
+    ├── reminderEngine.js         # Daily notification scheduling
+    └── changelog.js              # Version history data
 ```
 
 ---
@@ -80,16 +92,12 @@ src/
 
 ---
 
-## AWS Setup (v2.0 — when you're ready)
+## Firebase Setup
 
-You'll need:
-1. **AWS Cognito User Pool** — for user accounts and auth
-2. **DynamoDB table** — for storing entries
-3. **Lambda functions** — GET /entries, PUT /entries, DELETE /entries/:id
-4. **HTTP API Gateway** — to expose the Lambda functions
-
-Once set up, fill in your `.env` file with the values and redeploy.
-The sync engine (`src/sync/syncEngine.js`) is already fully written and waiting.
+See [FIREBASE_SETUP.md](FIREBASE_SETUP.md) for full instructions. You'll need:
+1. **Firebase Authentication** — Email/password sign-in
+2. **Cloud Firestore** — Document database with offline persistence
+3. **Firestore Security Rules** — Deploy `firestore.rules` to restrict user data
 
 ---
 
@@ -98,6 +106,5 @@ The sync engine (`src/sync/syncEngine.js`) is already fully written and waiting.
 | Version | Features |
 |---------|----------|
 | v1.0 | Core tracking, offline-first, PDF/Excel export, 4 themes |
-| v1.1 | Goals/targets, reminders, notes, streak tracker |
-| v1.2 | Year view, chart, bible study contact details |
-| v2.0 | AWS cloud backup, multi-device sync, user accounts |
+| v1.1 | Pioneer status & goals, encouragement messages, reminders |
+| v1.1.1 | Firebase cloud sync, contacts, notes journal, note reader |

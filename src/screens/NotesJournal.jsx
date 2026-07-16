@@ -36,7 +36,7 @@ export default function NotesJournal() {
               <button
                 type="button"
                 className={styles.editBtn}
-                onClick={() => navigate(`/log/${e.id}`)}
+                onClick={() => navigate(`/notes/${e.id}`)}
                 aria-label="Edit note"
               >
                 ✏️

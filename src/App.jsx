@@ -32,6 +32,7 @@ import LogEntry from "@/screens/LogEntry";
 import Contacts from "@/screens/Contacts";
 import ContactDetail from "@/screens/ContactDetail";
 import NotesJournal from "@/screens/NotesJournal";
+import NoteReader from "@/screens/NoteReader";
 import Monthly from "@/screens/Monthly";
 import Settings from "@/screens/Settings";
 
@@ -196,6 +197,7 @@ export default function App() {
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/contacts/:id" element={<ContactDetail />} />
             <Route path="/notes" element={<NotesJournal />} />
+            <Route path="/notes/:id" element={<NoteReader />} />
             <Route path="/monthly" element={<Monthly />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/login" element={<Navigate to="/home" replace />} />

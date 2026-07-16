@@ -239,7 +239,7 @@ export default function Home() {
             <button
               key={e.id}
               type="button"
-              onClick={() => navigate(`/log/${e.id}`)}
+              onClick={() => navigate(`/notes/${e.id}`)}
               style={{
                 display: "block",
                 width: "100%",
