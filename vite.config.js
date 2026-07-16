@@ -2,7 +2,6 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
-// GitHub Pages project sites are served from /RepoName/ — set VITE_BASE_URL=/Tally/ when building for Pages
 const base = process.env.VITE_BASE_URL || "/";
 
 export default defineConfig({
@@ -12,10 +11,13 @@ export default defineConfig({
 
     VitePWA({
       registerType: "autoUpdate",
-
-      // Include all assets needed for offline use
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.js",
+      injectManifest: {
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+      },
       includeAssets: ["icon.svg", "apple-touch-icon.png", "manifest.json"],
-
       manifest: {
         name: "Tally — Field Service Tracker",
         short_name: "Tally",
@@ -32,28 +34,9 @@ export default defineConfig({
           { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
       },
-
-      workbox: {
-        // Cache all app shell assets for offline use
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
-
-        // Runtime caching strategy: network first with offline fallback
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\.amazonaws\.com\/.*/i,
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "aws-api-cache",
-              networkTimeoutSeconds: 10,
-              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 },
-            },
-          },
-        ],
-      },
     }),
   ],
 
-  // Clean absolute imports — src/ is the root
   resolve: {
     alias: { "@": "/src" },
   },

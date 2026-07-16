@@ -159,3 +159,27 @@ export function monthProgressPercent() {
   const total = getDaysInMonth(startOfMonth(now));
   return Math.round((day / total) * 100);
 }
+
+/**
+ * Human-friendly duration from decimal hours.
+ * < 1h → "X min"; clean fractions → "Xh Ymin"; else → "X.Xh"
+ * @param {number} hours
+ * @returns {string}
+ */
+export function formatDuration(hours) {
+  const h = Number(hours) || 0;
+  if (h <= 0) return "0 min";
+  if (h < 1) {
+    const mins = Math.round(h * 60);
+    return `${mins} min`;
+  }
+  const whole = Math.floor(h);
+  const mins = Math.round((h - whole) * 60);
+  if (mins === 0) return `${whole}h`;
+  if (mins === 60) return `${whole + 1}h`;
+  if (mins % 5 === 0 || Math.abs(h * 60 - Math.round(h * 60)) < 0.01) {
+    return `${whole}h ${mins}min`;
+  }
+  const rounded = Math.round(h * 10) / 10;
+  return `${rounded}h`;
+}

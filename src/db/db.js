@@ -1,29 +1,17 @@
 /**
  * db.js
- * Defines the local IndexedDB database using Dexie.js.
+ * Device-only IndexedDB via Dexie.
  *
- * Tables:
- *  - entries       : Daily field service log entries
- *  - contacts      : Known bible study contact names (for autocomplete)
- *  - preferences   : Single-row user preferences (theme, dark mode, name)
- *  - syncQueue     : Entries waiting to be synced to AWS when online
+ * v1.2: preferences (theme/dark) stay local for instant load.
+ * Legacy stores (entries, contacts, pioneerStatus, syncQueue) remain in the
+ * schema so migrateLocalDataToFirestore() can still read old v1.0/v1.1 data,
+ * then clear them. New app code must use Firestore — not these tables.
  */
 
 import Dexie from "dexie";
 
 const db = new Dexie("TallyDB");
 
-/**
- * Schema version 1.
- *
- * Dexie schema syntax:
- *   ++id       = auto-increment primary key
- *   &field     = unique index
- *   field      = regular index
- *   [a+b]      = compound index
- *
- * Only indexed fields need to be listed — other fields are stored freely.
- */
 const STORE_SCHEMA = {
   entries: "&id, date, monthKey, synced",
   contacts: "&name",
@@ -31,13 +19,8 @@ const STORE_SCHEMA = {
   syncQueue: "++id, entryId, queuedAt",
 };
 
-/** v1.0 schema — existing installs created before v1.1 */
 db.version(1).stores(STORE_SCHEMA);
 
-/**
- * v1.1 — adds pioneerStatus for monthly publisher/pioneer settings.
- * Must bump version so Dexie migrates existing IndexedDB databases.
- */
 db.version(2).stores({
   ...STORE_SCHEMA,
   pioneerStatus: "&monthKey, status, goalHours",
@@ -45,191 +28,31 @@ db.version(2).stores({
 
 export default db;
 
-/* ─── PREFERENCE HELPERS ────────────────────────────────────────────────────── */
-
 /**
- * Load user preferences from IndexedDB.
- * Returns defaults if no preferences have been saved yet.
- *
- * @returns {Promise<{name:string, theme:string, dark:boolean, awsUserId:string|null}>}
+ * Load device UI preferences (theme + dark). Instant — no auth required.
  */
 export async function loadPreferences() {
   try {
     if (!db.isOpen()) await db.open();
     const prefs = await db.preferences.get("user");
-    return (
-      prefs ?? {
-        id: "user",
-        name: "",
-        theme: "sunrise",
-        dark: false,
-        awsUserId: null,
-        defaultStatus: "publisher",
-        defaultGoalHours: 0,
-        remindersEnabled: false,
-        reminderHour: 18,
-        lastSeenVersion: "",
-      }
-    );
+    return prefs ?? { id: "user", theme: "sunrise", dark: false };
   } catch (err) {
     console.warn("[Tally] DB error, retrying after delete:", err.name);
     try {
       await db.delete();
       await db.open();
-      const prefs = await db.preferences.get("user");
-      return (
-        prefs ?? {
-          id: "user",
-          name: "",
-          theme: "sunrise",
-          dark: false,
-          awsUserId: null,
-          defaultStatus: "publisher",
-          defaultGoalHours: 0,
-          remindersEnabled: false,
-          reminderHour: 18,
-          lastSeenVersion: "",
-        }
-      );
-    } catch (retryErr) {
-      console.warn("[Tally] Retry failed, returning defaults:", retryErr.name);
-      return {
-        id: "user",
-        name: "",
-        theme: "sunrise",
-        dark: false,
-        awsUserId: null,
-        defaultStatus: "publisher",
-        defaultGoalHours: 0,
-        remindersEnabled: false,
-        reminderHour: 18,
-        lastSeenVersion: "",
-      };
+      return { id: "user", theme: "sunrise", dark: false };
+    } catch {
+      return { id: "user", theme: "sunrise", dark: false };
     }
   }
 }
+
 /**
- * Save (merge) a partial preferences object.
- * Only the fields you pass in are updated — others are preserved.
- *
- * @param {Partial<{name, theme, dark, awsUserId}>} updates
+ * Merge and save device UI preferences.
+ * @param {Partial<{theme:string, dark:boolean}>} updates
  */
 export async function savePreferences(updates) {
   const existing = await loadPreferences();
   await db.preferences.put({ ...existing, ...updates, id: "user" });
-}
-
-/* ─── ENTRY HELPERS ─────────────────────────────────────────────────────────── */
-
-/**
- * Upsert a single entry into IndexedDB and add it to the sync queue.
- *
- * @param {object} entry — must include all fields listed in the schema comment above
- */
-export async function saveEntry(entry) {
-  const now = Date.now();
-  const record = { ...entry, synced: false, updatedAt: now };
-
-  // Use a transaction so both writes succeed or both fail
-  await db.transaction("rw", db.entries, db.syncQueue, async () => {
-    await db.entries.put(record);
-    await db.syncQueue.put({ entryId: entry.id, action: "upsert", queuedAt: now });
-  });
-}
-
-/**
- * Soft-delete an entry from IndexedDB and queue the deletion for AWS sync.
- *
- * @param {string} id — entry UUID
- */
-export async function deleteEntry(id) {
-  await db.transaction("rw", db.entries, db.syncQueue, async () => {
-    await db.entries.delete(id);
-    await db.syncQueue.put({ entryId: id, action: "delete", queuedAt: Date.now() });
-  });
-}
-
-/**
- * Fetch all entries for a given month, sorted newest-first.
- *
- * @param {string} monthKey — format "YYYY-MM"
- * @returns {Promise<object[]>}
- */
-export async function getEntriesForMonth(monthKey) {
-  return db.entries
-    .where("monthKey")
-    .equals(monthKey)
-    .sortBy("date")
-    .then((rows) => rows.reverse()); // newest first
-}
-
-/* ─── CONTACT HELPERS ───────────────────────────────────────────────────────── */
-
-/**
- * Add new contact names (from a bible study entry) if they don't already exist.
- *
- * @param {string[]} names
- */
-export async function addContacts(names) {
-  const records = names.map((name) => ({ name: name.trim() }));
-  // bulkPut with ignoreErrors skips duplicates silently
-  await db.contacts.bulkPut(records).catch(Dexie.BulkError, () => {});
-}
-
-/**
- * Search contacts by partial name match (case-insensitive).
- *
- * @param {string} query
- * @returns {Promise<string[]>} — array of matching names
- */
-export async function searchContacts(query) {
-  const lower = query.toLowerCase();
-  const all   = await db.contacts.toArray();
-  return all
-    .map((c) => c.name)
-    .filter((name) => name.toLowerCase().includes(lower))
-    .sort();
-}
-
-/* ─── PIONEER STATUS HELPERS ────────────────────────────────────────────────── */
-
-/**
- * Get the pioneer status settings for a specific month.
- * If there is no override, returns the default preference-based status.
- *
- * @param {string} monthKey — "YYYY-MM"
- * @returns {Promise<{monthKey:string, status:"publisher"|"auxiliary"|"regular", goalHours:number, isOverride:boolean}>}
- */
-export async function getStatusForMonth(monthKey) {
-  const row = await db.pioneerStatus.get(monthKey);
-  if (row) return row;
-
-  const prefs = await loadPreferences();
-  return {
-    monthKey,
-    status: prefs.defaultStatus ?? "publisher",
-    goalHours: prefs.defaultGoalHours ?? 0,
-    isOverride: false,
-  };
-}
-
-/**
- * Set a month-specific status override.
- *
- * @param {string} monthKey
- * @param {"publisher"|"auxiliary"|"regular"} status
- * @param {number} goalHours
- */
-export async function setStatusForMonth(monthKey, status, goalHours) {
-  await db.pioneerStatus.put({ monthKey, status, goalHours, isOverride: true });
-}
-
-/**
- * Set the default (inherited) status used when a month has no override.
- *
- * @param {"publisher"|"auxiliary"|"regular"} status
- * @param {number} goalHours
- */
-export async function setDefaultStatus(status, goalHours) {
-  await savePreferences({ defaultStatus: status, defaultGoalHours: goalHours });
 }

@@ -1,56 +1,40 @@
 /**
- * Home.jsx
- * Main dashboard screen.
- * Shows a monthly summary card, month navigation, and list of entries.
+ * Home.jsx — dashboard with Firestore-backed entries.
  */
 
 import React, { useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useLiveQuery } from "dexie-react-hooks";
 
 import { PrefsContext } from "@/App";
-import db, { deleteEntry, getStatusForMonth } from "@/db/db";
-import { triggerSync } from "@/sync/syncEngine";
+import { deleteEntry, getStatusForMonth } from "@/firebase/firestore";
+import { useEntriesForMonth } from "@/hooks/useFirestore";
 import EntryCard from "@/components/EntryCard";
 import {
   currentMonthKey, prevMonthKey, nextMonthKey,
-  isCurrentMonth, formatMonthLabel,
+  isCurrentMonth, formatMonthLabel, formatEntryDate, formatDuration,
   getGreeting, monthProgressPercent, todayISO,
 } from "@/utils/dateHelpers";
 import styles from "./Home.module.css";
 
 export default function Home() {
   const { prefs } = useContext(PrefsContext);
-  const navigate  = useNavigate();
-
-  /* Active month for the dashboard — defaults to current month */
+  const navigate = useNavigate();
   const [monthKey, setMonthKey] = useState(currentMonthKey);
-
-  /** Pioneer status for the month currently shown (navigated month, not always “today”). */
   const [viewStatus, setViewStatus] = useState(null);
 
+  const { entries } = useEntriesForMonth(monthKey);
+  const sortedEntries = entries ?? [];
+
   useEffect(() => {
-    getStatusForMonth(monthKey).then((s) => setViewStatus(s));
+    getStatusForMonth(monthKey).then(setViewStatus).catch(() => setViewStatus(null));
   }, [monthKey]);
 
-  /* Live query — re-renders automatically when IndexedDB changes */
-  const entries = useLiveQuery(
-    () => db.entries.where("monthKey").equals(monthKey).sortBy("date"),
-    [monthKey],
-    []
-  );
-
-  /* Sorted newest-first for display */
-  const sortedEntries = [...(entries ?? [])].reverse();
-
-  /* Compute totals */
   const totalHours = sortedEntries.reduce((s, e) => s + (parseFloat(e.hours) || 0), 0);
-  const uniqueBS   = new Set(sortedEntries.flatMap((e) => e.bibleStudies ?? []));
-  const monthPct   = isCurrentMonth(monthKey) ? monthProgressPercent() : 100;
+  const uniqueBS = new Set(sortedEntries.flatMap((e) => e.bibleStudies ?? []));
+  const monthPct = isCurrentMonth(monthKey) ? monthProgressPercent() : 100;
 
   async function handleDelete(id) {
     await deleteEntry(id);
-    triggerSync();
   }
 
   function handleEdit(entry) {
@@ -59,7 +43,6 @@ export default function Home() {
 
   const monthLabel = formatMonthLabel(monthKey);
   const atCurrentMonth = isCurrentMonth(monthKey);
-
   const isPublisher = viewStatus?.status === "publisher";
   const goalHours = viewStatus?.goalHours ?? 0;
   const progressPercent = !isPublisher && goalHours > 0 ? (totalHours / goalHours) * 100 : 0;
@@ -70,16 +53,17 @@ export default function Home() {
     viewStatus?.status === "auxiliary" && totalHours < 15 && monthIsAlmostOver && totalHours < goalHours;
   const goalReached = !isPublisher && goalHours > 0 && totalHours >= goalHours;
 
-  const todayEntry =
-    atCurrentMonth ? sortedEntries.find((e) => e.date === todayISO()) ?? null : null;
+  const todayEntry = atCurrentMonth ? sortedEntries.find((e) => e.date === todayISO()) ?? null : null;
   const todayLogged = !!todayEntry;
   const todayHours = todayEntry ? (parseFloat(todayEntry.hours) || 0) : 0;
   const todayHasBibleStudies = (todayEntry?.bibleStudies?.length ?? 0) > 0;
 
+  const recentNotes = sortedEntries
+    .filter((e) => (e.notes ?? "").trim())
+    .slice(0, 3);
+
   function getEncouragementText() {
     if (!viewStatus) return null;
-
-    /** Past (or any non-current) month with no data: skip — avoids “motivation” for months a brand-new user never used. */
     if (!atCurrentMonth && sortedEntries.length === 0) return null;
 
     if (viewStatus.status === "publisher") {
@@ -94,15 +78,11 @@ export default function Home() {
         } else {
           msg = "Every bible study starts with a conversation.\nReady to go today?";
         }
-
         if (uniqueBS.size >= 3) {
           msg = `Wonderful! ${uniqueBS.size} bible studies\nthis month — that's real impact.`;
         }
-
         return msg;
       }
-
-      // Past month — only when this month has entries (guarded above)
       if (uniqueBS.size >= 3) {
         return `Wonderful! ${uniqueBS.size} bible studies\nthis month — that's real impact.`;
       }
@@ -112,41 +92,35 @@ export default function Home() {
       return "This month you logged time in the ministry\nwith no bible studies recorded — every good conversation counts.";
     }
 
-    // Auxiliary / Regular
     if (sortedEntries.length === 0) {
       if (!atCurrentMonth) return null;
       return `New month! Your goal is ${goalHours}h.\nReady to start?`;
     }
-
     if (goalReached && uniqueBS.size > 0) {
-      return `Goal reached! ${totalHours.toFixed(1)}h and\n${uniqueBS.size} bible studies this month. Excellent!`;
+      return `Goal reached! ${formatDuration(totalHours)} and\n${uniqueBS.size} bible studies this month. Excellent!`;
     }
     if (goalReached && uniqueBS.size === 0) {
       return "Hours goal reached! Now go find\nthat bible study opportunity.";
     }
-
     const remainingHours = Math.max(0, goalHours - totalHours);
     if (atCurrentMonth) {
       if (todayLogged && todayHasBibleStudies) {
-        return `Great day! ${todayHours.toFixed(1)}h logged and\na bible study too. ${totalHours.toFixed(1)}h total this month.`;
+        return `Great day! ${formatDuration(todayHours)} logged and\na bible study too. ${formatDuration(totalHours)} total this month.`;
       }
       if (todayLogged && !todayHasBibleStudies) {
-        return `Good work! ${todayHours.toFixed(1)}h logged today.\n${remainingHours.toFixed(1)}h left to reach your goal.`;
+        return `Good work! ${formatDuration(todayHours)} logged today.\n${formatDuration(remainingHours)} left to reach your goal.`;
       }
       if (totalHours < goalHours && uniqueBS.size > 0) {
-        return `${remainingHours.toFixed(1)}h to your goal, and\n${uniqueBS.size} bible studies already. Keep going!`;
+        return `${formatDuration(remainingHours)} to your goal, and\n${uniqueBS.size} bible studies already. Keep going!`;
       }
       return null;
     }
-
-    // Past month with entries, goal not reached (or reached handled above)
     if (totalHours < goalHours && uniqueBS.size > 0) {
-      return `You finished ${monthLabel} with ${totalHours.toFixed(1)}h toward your ${goalHours}h goal\nand ${uniqueBS.size} bible ${uniqueBS.size === 1 ? "study" : "studies"}.`;
+      return `You finished ${monthLabel} with ${formatDuration(totalHours)} toward your ${goalHours}h goal\nand ${uniqueBS.size} bible ${uniqueBS.size === 1 ? "study" : "studies"}.`;
     }
     if (totalHours < goalHours) {
-      return `You finished ${monthLabel} with ${totalHours.toFixed(1)}h of your ${goalHours}h goal.`;
+      return `You finished ${monthLabel} with ${formatDuration(totalHours)} of your ${goalHours}h goal.`;
     }
-
     return null;
   }
 
@@ -169,7 +143,6 @@ export default function Home() {
 
   return (
     <main className={`page ${styles.page}`}>
-      {/* Header */}
       <header className={styles.header}>
         <div>
           <p className="label">{getGreeting().toUpperCase()}</p>
@@ -182,7 +155,6 @@ export default function Home() {
         </time>
       </header>
 
-      {/* Monthly hero card */}
       <section className={styles.heroCard} aria-label="Monthly summary">
         {viewStatus?.status && (
           <span style={pillStyle(viewStatus.status)}>
@@ -195,17 +167,11 @@ export default function Home() {
         )}
 
         <div className={styles.heroNav}>
-          <button
-            className={styles.navBtn}
-            onClick={() => setMonthKey(prevMonthKey(monthKey))}
-            aria-label="Previous month"
-          >‹</button>
-
+          <button className={styles.navBtn} onClick={() => setMonthKey(prevMonthKey(monthKey))} aria-label="Previous month">‹</button>
           <div className={styles.heroMonth}>
             <p className={styles.heroMonthSub}>FIELD SERVICE</p>
             <h2 className={styles.heroMonthLabel}>{monthLabel}</h2>
           </div>
-
           <button
             className={styles.navBtn}
             onClick={() => setMonthKey(nextMonthKey(monthKey))}
@@ -215,12 +181,11 @@ export default function Home() {
           >›</button>
         </div>
 
-        {/* Stats */}
         <div className={styles.stats}>
           {!isPublisher ? (
             <>
               <div className={styles.stat}>
-                <span className={styles.statValue}>{totalHours.toFixed(1)}</span>
+                <span className={styles.statValue}>{formatDuration(totalHours)}</span>
                 <span className={styles.statLabel}>HOURS</span>
               </div>
               <div className={styles.divider} />
@@ -237,7 +202,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* Goal progress — hidden for publishers */}
         {atCurrentMonth && !isPublisher && goalHours > 0 && (
           <>
             <div className={styles.progressBar}>
@@ -255,25 +219,58 @@ export default function Home() {
             </div>
             <p className={styles.progressLabel}>
               {goalReached
-                ? `Goal reached! ${totalHours.toFixed(1)}h / ${goalHours}h`
-                : `${totalHours.toFixed(1)}h / ${goalHours}h — ${remaining.toFixed(1)}h to go`}
+                ? `Goal reached! ${formatDuration(totalHours)} / ${goalHours}h`
+                : `${formatDuration(totalHours)} / ${goalHours}h — ${formatDuration(remaining)} to go`}
             </p>
           </>
         )}
       </section>
 
-      {/* Encouragement */}
       {encouragementText && (
-        <section
-          className={styles.heroCard}
-          style={{ padding: 14, marginTop: 12 }}
-          aria-label="Encouragement"
-        >
+        <section className={styles.heroCard} style={{ padding: 14, marginTop: 12 }} aria-label="Encouragement">
           <p style={{ margin: 0, whiteSpace: "pre-line" }}>{encouragementText}</p>
         </section>
       )}
 
-      {/* Entries list */}
+      {recentNotes.length > 0 && (
+        <section className={styles.heroCard} style={{ padding: 16, marginTop: 12 }} aria-label="Recent notes">
+          <p className="label" style={{ marginBottom: 10 }}>RECENT NOTES</p>
+          {recentNotes.map((e) => (
+            <button
+              key={e.id}
+              type="button"
+              onClick={() => navigate(`/log/${e.id}`)}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                background: "none",
+                border: "none",
+                borderBottom: "1px solid var(--color-border)",
+                padding: "10px 0",
+                cursor: "pointer",
+                fontFamily: "Georgia, serif",
+              }}
+            >
+              <span style={{ fontSize: 12, color: "var(--color-primary)", fontWeight: "bold" }}>
+                {formatEntryDate(e.date)}
+              </span>
+              <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--color-text)", lineHeight: 1.4 }}>
+                {e.notes}
+              </p>
+            </button>
+          ))}
+          <button
+            type="button"
+            className={styles.navBtn}
+            style={{ width: "100%", marginTop: 10, fontSize: 13 }}
+            onClick={() => navigate("/notes")}
+          >
+            View all notes →
+          </button>
+        </section>
+      )}
+
       <div className={styles.listHeader}>
         <p className="label">ENTRIES THIS MONTH</p>
         <span className={styles.entryCount}>{sortedEntries.length} days</span>
@@ -287,21 +284,11 @@ export default function Home() {
         </div>
       ) : (
         sortedEntries.map((entry) => (
-          <EntryCard
-            key={entry.id}
-            entry={entry}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-          />
+          <EntryCard key={entry.id} entry={entry} onEdit={handleEdit} onDelete={handleDelete} />
         ))
       )}
 
-      {/* FAB — log new entry */}
-      <button
-        className={styles.fab}
-        onClick={() => navigate("/log")}
-        aria-label="Log new entry"
-      >+</button>
+      <button className={styles.fab} onClick={() => navigate("/log")} aria-label="Log new entry">+</button>
     </main>
   );
 }

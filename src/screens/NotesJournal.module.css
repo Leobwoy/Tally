@@ -1,0 +1,70 @@
+.page { padding-top: 22px; padding-bottom: 100px; }
+
+.backBtn {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--color-subtext);
+  cursor: pointer;
+  margin-bottom: 16px;
+  font-family: Georgia, serif;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: bold;
+  color: var(--color-text);
+  margin-bottom: 20px;
+}
+
+.card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+
+.cardTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.date {
+  margin: 0;
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--color-text);
+}
+
+.hours {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--color-subtext);
+}
+
+.editBtn {
+  min-width: 36px;
+  min-height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg);
+  cursor: pointer;
+}
+
+.note {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
+.empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-subtext);
+}

@@ -176,3 +176,34 @@
 }
 
 .saveBtn:active { opacity: 0.88; transform: scale(0.98); }
+
+.dateWrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--color-card);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 4px 12px 4px 14px;
+}
+
+.dateIcon {
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.dateInputLarge {
+  flex: 1;
+  padding: 16px 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 16px;
+  font-family: Georgia, serif;
+  font-weight: bold;
+  min-height: 48px;
+}
+
+.dateInputLarge:focus {
+  outline: none;
+}

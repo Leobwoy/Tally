@@ -1,152 +1,214 @@
 /**
  * App.jsx
- * Root component for Tally.
+ * Root component for Tally v1.2.
  *
- * Responsibilities:
- *  - Load user preferences from IndexedDB on startup
- *  - Apply the correct theme + dark mode via CSS variables
- *  - Decide whether to show Onboarding or the main app
- *  - Set up routing between the four main screens
- *  - Start the background sync listener
+ * - Device theme/dark from Dexie (instant)
+ * - Auth via Firebase; profile + data via Firestore
+ * - Offline sync handled by Firestore persistence
  */
 
 import React, { useEffect, useState } from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
-import { Amplify } from "aws-amplify";
+import { Routes, Route, Navigate } from "react-router-dom";
 
 import { loadPreferences, savePreferences } from "@/db/db";
 import { applyTheme } from "@/themes/themes";
-import { startSyncListener, triggerSync } from "@/sync/syncEngine";
+import { onAuthChange } from "@/firebase/auth";
+import {
+  getUserProfile,
+  updateUserProfile,
+  migrateLocalDataToFirestore,
+  subscribeUserProfile,
+} from "@/firebase/firestore";
 import { scheduleReminder } from "@/utils/reminderEngine";
 import { CURRENT_VERSION } from "@/utils/changelog";
 import WhatsNew from "@/components/WhatsNew";
 
-import BottomNav    from "@/components/BottomNav";
-import Onboarding   from "@/screens/Onboarding";
-import Home         from "@/screens/Home";
-import LogEntry     from "@/screens/LogEntry";
-import Monthly      from "@/screens/Monthly";
-import Settings     from "@/screens/Settings";
+import BottomNav from "@/components/BottomNav";
+import Onboarding from "@/screens/Onboarding";
+import Login from "@/screens/Login";
+import Signup from "@/screens/Signup";
+import Home from "@/screens/Home";
+import LogEntry from "@/screens/LogEntry";
+import Contacts from "@/screens/Contacts";
+import ContactDetail from "@/screens/ContactDetail";
+import NotesJournal from "@/screens/NotesJournal";
+import Monthly from "@/screens/Monthly";
+import Settings from "@/screens/Settings";
 
-/* ─── AWS AMPLIFY CONFIGURATION ─────────────────────────────────────────────── */
-/*
- * These values come from your .env file (VITE_ prefix exposes them to the browser).
- * Until you have AWS set up, the app works fully offline — Amplify is only
- * used by syncEngine.js which checks for a valid session before doing anything.
- */
-if (import.meta.env.VITE_AWS_REGION) {
-  Amplify.configure({
-    Auth: {
-      Cognito: {
-        region:           import.meta.env.VITE_AWS_REGION,
-        userPoolId:       import.meta.env.VITE_COGNITO_USER_POOL_ID,
-        userPoolClientId: import.meta.env.VITE_COGNITO_CLIENT_ID,
-      },
-    },
-  });
-}
-
-/* ─── CONTEXT ───────────────────────────────────────────────────────────────── */
-/**
- * PrefsContext — shared across all screens so any component can read or
- * update user preferences without prop-drilling.
- */
 export const PrefsContext = React.createContext(null);
 
-/* ─── COMPONENT ─────────────────────────────────────────────────────────────── */
 export default function App() {
-  const [prefs, setPrefs]       = useState(null);  // null = still loading
-  const [ready, setReady]       = useState(false);
+  /** undefined = checking auth, null = logged out, User = logged in */
+  const [user, setUser] = useState(undefined);
+  const [localPrefs, setLocalPrefs] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [ready, setReady] = useState(false);
+  const [migrating, setMigrating] = useState(false);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
 
-  /* Load preferences from IndexedDB on first mount */
+  /* Instant theme from Dexie + persistent storage request */
   useEffect(() => {
     loadPreferences()
       .then((p) => {
-        setPrefs(p);
-        applyTheme(p.theme, p.dark);
+        setLocalPrefs(p);
+        applyTheme(p.theme ?? "sunrise", !!p.dark);
         setReady(true);
-
-        if (p.name && p.lastSeenVersion !== CURRENT_VERSION) {
-          setShowWhatsNew(true);
-        }
-
-        if (p.remindersEnabled === true) {
-          scheduleReminder(p.reminderHour ?? 18);
-        }
       })
-      .catch((err) => {
-        console.warn("[Tally] loadPreferences failed completely, using defaults:", err);
-        const defaults = { id: "user", name: "", theme: "sunrise", dark: false, awsUserId: null };
-        setPrefs(defaults);
+      .catch(() => {
+        const defaults = { theme: "sunrise", dark: false };
+        setLocalPrefs(defaults);
         applyTheme(defaults.theme, defaults.dark);
         setReady(true);
       });
 
-    /* Start listening for online events to trigger background sync */
-    startSyncListener();
-
-    /* Attempt a sync immediately in case we're already online */
-    triggerSync();
+    if (navigator.storage?.persist) {
+      navigator.storage.persist().then((granted) => {
+        console.log("[Tally] persistent storage:", granted);
+      });
+    }
   }, []);
 
-  /* Re-apply theme whenever prefs change */
+  /* Auth listener */
   useEffect(() => {
-    if (prefs) applyTheme(prefs.theme, prefs.dark);
-  }, [prefs?.theme, prefs?.dark]);
+    const unsub = onAuthChange((u) => setUser(u));
+    return unsub;
+  }, []);
+
+  /* Profile subscription + migration when signed in */
+  useEffect(() => {
+    if (!user) {
+      setProfile(null);
+      return;
+    }
+
+    let cancelled = false;
+    let unsubProfile = () => {};
+
+    (async () => {
+      setMigrating(true);
+      try {
+        await migrateLocalDataToFirestore();
+      } catch (err) {
+        console.warn("[Tally] migration error:", err.message);
+      }
+      if (cancelled) return;
+      setMigrating(false);
+
+      unsubProfile = subscribeUserProfile((p) => {
+        setProfile(p);
+        if (p?.theme != null || p?.dark != null) {
+          // Keep Dexie in sync when profile carries theme (legacy) but prefer localPrefs for theme
+        }
+        if (p?.name && p.lastSeenVersion !== CURRENT_VERSION) {
+          setShowWhatsNew(true);
+        }
+        if (p?.remindersEnabled) {
+          scheduleReminder(p.reminderHour ?? 18);
+        }
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubProfile();
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (localPrefs) applyTheme(localPrefs.theme, localPrefs.dark);
+  }, [localPrefs?.theme, localPrefs?.dark]);
+
+  async function updateLocalPrefs(updates) {
+    const next = { ...localPrefs, ...updates };
+    setLocalPrefs(next);
+    await savePreferences(updates);
+    if (updates.theme != null || updates.dark != null) {
+      applyTheme(next.theme, next.dark);
+    }
+  }
+
+  async function updateProfile(updates) {
+    await updateUserProfile(updates);
+    setProfile((prev) => (prev ? { ...prev, ...updates } : prev));
+  }
 
   /**
-   * Update one or more preference fields, persist to IndexedDB,
-   * and update local state — all in one call.
-   * Used by Settings.jsx and Onboarding.jsx.
-   *
-   * @param {Partial<typeof prefs>} updates
+   * Unified updater used by Settings/Onboarding.
+   * Theme/dark → Dexie; everything else → Firestore profile.
    */
   async function updatePrefs(updates) {
-    const next = { ...prefs, ...updates };
-    setPrefs(next);
-    await savePreferences(updates);
+    const localKeys = {};
+    const profileKeys = {};
+    for (const [k, v] of Object.entries(updates)) {
+      if (k === "theme" || k === "dark") localKeys[k] = v;
+      else profileKeys[k] = v;
+    }
+    if (Object.keys(localKeys).length) await updateLocalPrefs(localKeys);
+    if (Object.keys(profileKeys).length) await updateProfile(profileKeys);
   }
 
   async function handleDismissWhatsNew() {
     setShowWhatsNew(false);
-    await savePreferences({ lastSeenVersion: CURRENT_VERSION });
-    setPrefs((prev) => ({ ...prev, lastSeenVersion: CURRENT_VERSION }));
+    await updateProfile({ lastSeenVersion: CURRENT_VERSION });
   }
 
-  /* Blank screen while IndexedDB loads (usually < 50ms) */
-  if (!ready) return null;
+  /* Merged prefs view for screens that still read prefs.name / prefs.theme etc. */
+  const prefs = {
+    ...(localPrefs ?? { theme: "sunrise", dark: false }),
+    ...(profile ?? {}),
+    name: profile?.name ?? "",
+    theme: localPrefs?.theme ?? profile?.theme ?? "sunrise",
+    dark: localPrefs?.dark ?? profile?.dark ?? false,
+  };
 
-  /* User hasn't completed onboarding yet */
-  const isNewUser = !prefs.name;
+  if (!ready || user === undefined) return null;
+  if (user && migrating) return null;
+
+  const isLoggedOut = user === null;
+  const needsOnboarding = user && profile && profile.onboardingComplete === false;
+  // Wait for profile to load when logged in
+  if (user && profile === null && !migrating) {
+    // Still loading profile snapshot
+  }
 
   return (
-    <PrefsContext.Provider value={{ prefs, updatePrefs }}>
-      {isNewUser ? (
-        /* Onboarding has no nav bar */
+    <PrefsContext.Provider value={{ prefs, profile, localPrefs, updatePrefs, updateLocalPrefs, updateProfile, user }}>
+      {isLoggedOut ? (
         <Routes>
-          <Route path="*" element={<Onboarding />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
+      ) : needsOnboarding || (user && profile && !profile.onboardingComplete) ? (
+        <Routes>
+          <Route path="/onboarding" element={<Onboarding />} />
+          <Route path="*" element={<Navigate to="/onboarding" replace />} />
+        </Routes>
+      ) : !profile ? (
+        null
       ) : (
         <>
           <Routes>
-            <Route path="/"         element={<Navigate to="/home" replace />} />
-            <Route path="/home"     element={<Home />} />
-            <Route path="/log"      element={<LogEntry />} />
-            <Route path="/log/:id"  element={<LogEntry />} />
-            <Route path="/monthly"  element={<Monthly />} />
+            <Route path="/" element={<Navigate to="/home" replace />} />
+            <Route path="/home" element={<Home />} />
+            <Route path="/log" element={<LogEntry />} />
+            <Route path="/log/:id" element={<LogEntry />} />
+            <Route path="/contacts" element={<Contacts />} />
+            <Route path="/contacts/:id" element={<ContactDetail />} />
+            <Route path="/notes" element={<NotesJournal />} />
+            <Route path="/monthly" element={<Monthly />} />
             <Route path="/settings" element={<Settings />} />
-            {/* Fallback — redirect unknown paths to home */}
-            <Route path="*"         element={<Navigate to="/home" replace />} />
+            <Route path="/login" element={<Navigate to="/home" replace />} />
+            <Route path="/signup" element={<Navigate to="/home" replace />} />
+            <Route path="/onboarding" element={<Navigate to="/home" replace />} />
+            <Route path="*" element={<Navigate to="/home" replace />} />
           </Routes>
           <BottomNav />
         </>
       )}
+
       {showWhatsNew && (
-        <WhatsNew
-          version={CURRENT_VERSION}
-          onDismiss={handleDismissWhatsNew}
-        />
+        <WhatsNew version={CURRENT_VERSION} onDismiss={handleDismissWhatsNew} />
       )}
     </PrefsContext.Provider>
   );

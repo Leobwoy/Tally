@@ -1,4 +1,13 @@
-import db, { getStatusForMonth } from "@/db/db";
+/**
+ * reminderEngine.js
+ * Schedules daily reminders via setTimeout, delivered through the service worker
+ * when possible (more reliable when the tab is backgrounded).
+ *
+ * Note: Full reliability when the app is fully closed requires a future native
+ * wrap with Capacitor Local Notifications.
+ */
+
+import { hasEntryForDate, getStatusForMonth } from "@/firebase/firestore";
 import { currentMonthKey, todayISO } from "@/utils/dateHelpers";
 
 let timeoutId = null;
@@ -11,13 +20,35 @@ export async function requestNotificationPermission() {
   return result === "granted";
 }
 
+function postReminderToServiceWorker(message) {
+  const payload = {
+    type: "SHOW_REMINDER",
+    title: "Tally",
+    body: message,
+    icon: "/icon-192.png",
+  };
+
+  if (navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.controller.postMessage(payload);
+    return;
+  }
+
+  if (Notification.permission === "granted") {
+    new Notification(payload.title, {
+      body: payload.body,
+      icon: payload.icon,
+      badge: "/icon-192.png",
+      tag: "daily-reminder",
+    });
+  }
+}
+
 export function scheduleReminder(hourOfDay = 18) {
   cancelReminder();
 
   const now = new Date();
   const target = new Date();
   target.setHours(hourOfDay, 0, 0, 0);
-
   if (target <= now) target.setDate(target.getDate() + 1);
 
   const msUntilReminder = target.getTime() - now.getTime();
@@ -25,29 +56,18 @@ export function scheduleReminder(hourOfDay = 18) {
   timeoutId = window.setTimeout(async () => {
     try {
       const todayKey = todayISO();
-      const existingEntry = await db.entries.where("date").equals(todayKey).first();
-      if (existingEntry) {
-        scheduleReminder(hourOfDay);
-        return;
-      }
+      const logged = await hasEntryForDate(todayKey);
+      if (logged) return;
 
       const status = await getStatusForMonth(currentMonthKey());
-
       const message =
         status.status === "publisher"
           ? "Don't forget to log your bible studies today!"
           : "Don't forget to log your field service hours today!";
 
-      // If permission was revoked, this will throw in some browsers
-      // but we still reschedule for tomorrow.
-      new Notification("Tally", {
-        body: message,
-        icon: "/icon-192.png",
-        badge: "/icon-192.png",
-        tag: "daily-reminder",
-      });
-    } catch (err) {
-      // Silent: reminders are best-effort.
+      postReminderToServiceWorker(message);
+    } catch {
+      // best-effort
     } finally {
       scheduleReminder(hourOfDay);
     }
@@ -71,4 +91,3 @@ export function cancelReminder() {
     // ignore
   }
 }
-

@@ -1,7 +1,5 @@
 /**
- * BottomNav.jsx
- * Persistent bottom navigation bar shown on all screens except Onboarding.
- * Highlights the active route and navigates on tap.
+ * BottomNav.jsx — 5-item nav including Contacts.
  */
 
 import React from "react";
@@ -9,10 +7,11 @@ import { useLocation, useNavigate } from "react-router-dom";
 import styles from "./BottomNav.module.css";
 
 const NAV_ITEMS = [
-  { path: "/home",     icon: "🏠", label: "Home"    },
-  { path: "/log",      icon: "✏️", label: "Log"     },
-  { path: "/monthly",  icon: "📊", label: "Report"  },
-  { path: "/settings", icon: "⚙️", label: "Settings"},
+  { path: "/home", icon: "🏠", label: "Home" },
+  { path: "/log", icon: "✏️", label: "Log" },
+  { path: "/contacts", icon: "👥", label: "Contacts" },
+  { path: "/monthly", icon: "📊", label: "Report" },
+  { path: "/settings", icon: "⚙️", label: "Settings" },
 ];
 
 export default function BottomNav() {
@@ -22,8 +21,12 @@ export default function BottomNav() {
   return (
     <nav className={styles.nav} aria-label="Main navigation">
       {NAV_ITEMS.map(({ path, icon, label }) => {
-        /* Consider /log and /log/:id both as "log" active state */
-        const isActive = location.pathname.startsWith(path);
+        const isActive =
+          path === "/log"
+            ? location.pathname.startsWith("/log")
+            : path === "/contacts"
+              ? location.pathname.startsWith("/contacts")
+              : location.pathname.startsWith(path);
 
         return (
           <button
