@@ -79,7 +79,7 @@ export async function saveEntry(entry) {
   const uid = requireUid();
   const { id, ...rest } = entry;
   await setDoc(
-    doc(db, "users", uid, "entries", id),
+    doc(db, "users", uid, "entries", String(id)),
     { ...rest, updatedAt: Date.now() },
     { merge: true }
   );
@@ -117,13 +117,14 @@ export function subscribeEntriesForMonth(monthKey, callback) {
   }
   const q = query(
     entriesCol(uid),
-    where("monthKey", "==", monthKey),
-    orderBy("date", "desc")
+    where("monthKey", "==", monthKey)
   );
   return onSnapshot(
     q,
     (snap) => {
-      callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      rows.sort((a, b) => b.date.localeCompare(a.date));
+      callback(rows);
     },
     (err) => {
       console.warn("[Tally] entries subscription error:", err.message);
@@ -199,13 +200,14 @@ export function subscribeContactsByStage(stage, callback) {
   }
   const q = query(
     contactsCol(uid),
-    where("stage", "==", stage),
-    orderBy("updatedAt", "desc")
+    where("stage", "==", stage)
   );
   return onSnapshot(
     q,
     (snap) => {
-      callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      rows.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      callback(rows);
     },
     (err) => {
       console.warn("[Tally] contacts subscription error:", err.message);
